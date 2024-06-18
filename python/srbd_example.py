@@ -9,351 +9,23 @@ from horizon.utils import utils, kin_dyn, resampler_trajectory, mat_storer
 from horizon.transcriptions.transcriptor import Transcriptor
 from horizon.solvers import solver
 from horizon.ros.replay_trajectory import *
-import matplotlib.pyplot as plt
-import os, time
+import time
 from horizon.ros import utils as horizon_ros_utils
 from ttictoc import tic,toc
-import tf
-from geometry_msgs.msg import WrenchStamped, Point, PoseStamped, TwistStamped
+from geometry_msgs.msg import WrenchStamped
 from sensor_msgs.msg import Joy
-from numpy import linalg as LA
-from visualization_msgs.msg import Marker, MarkerArray
-from abc import ABCMeta, abstractmethod
 from std_msgs.msg import Float32
-from scipy.spatial.transform import Rotation as R
+import viz
+import wpg
+import utilities
+import cartesio #todo: use bindings!
 
 SOLVER = lambda: 'ipopt'
-
-class steps_phase:
-    def __init__(self, f, c, cdot, c_init_z, c_ref, nodes, number_of_legs, contact_model, max_force, max_velocity):
-        self.f = f
-        self.c = c
-        self.cdot = cdot
-        self.c_ref = c_ref
-
-        self.number_of_legs = number_of_legs
-        self.contact_model = contact_model
-
-        self.nodes = nodes
-        self.step_counter = 0
-
-        #JUMP
-        self.jump_c = []
-        self.jump_cdot_bounds = []
-        self.jump_f_bounds = []
-        sin = 0.1 * np.sin(np.linspace(0, np.pi, 10))
-        for k in range(0, 7):  # 7 nodes down
-            self.jump_c.append(c_init_z)
-            self.jump_cdot_bounds.append([0., 0., 0.])
-            self.jump_f_bounds.append([max_force, max_force, max_force])
-        for k in range(0, 8):  # 8 nodes jump
-            self.jump_c.append(c_init_z + sin[k + 1])
-            self.jump_cdot_bounds.append([max_velocity, max_velocity, max_velocity])
-            self.jump_f_bounds.append([0., 0., 0.])
-        for k in range(0, 7):  # 6 nodes down
-            self.jump_c.append(c_init_z)
-            self.jump_cdot_bounds.append([0., 0., 0.])
-            self.jump_f_bounds.append([max_force, max_force, max_force])
-
-
-
-        #NO STEP
-        self.stance = []
-        self.cdot_bounds = []
-        self.f_bounds = []
-        for k in range(0, nodes+1):
-            self.stance.append([c_init_z])
-            self.cdot_bounds.append([0., 0., 0.])
-            self.f_bounds.append([max_force, max_force, max_force])
-
-
-        #STEP
-        sin = 0.1 * np.sin(np.linspace(0, np.pi, 10))
-        #left step cycle
-        self.l_cycle = []
-        self.l_cdot_bounds = []
-        self.l_f_bounds = []
-        for k in range(0,2): # 2 nodes down
-            self.l_cycle.append(c_init_z)
-            self.l_cdot_bounds.append([0., 0., 0.])
-            self.l_f_bounds.append([max_force, max_force, max_force])
-        for k in range(0, 8):  # 8 nodes step
-            self.l_cycle.append(c_init_z + sin[k + 1])
-            self.l_cdot_bounds.append([max_velocity, max_velocity, max_velocity])
-            self.l_f_bounds.append([0., 0., 0.])
-        for k in range(0, 2):  # 2 nodes down
-            self.l_cycle.append(c_init_z)
-            self.l_cdot_bounds.append([0., 0., 0.])
-            self.l_f_bounds.append([max_force, max_force, max_force])
-        for k in range(0, 8):  # 8 nodes down (other step)
-            self.l_cycle.append(c_init_z)
-            self.l_cdot_bounds.append([0., 0., 0.])
-            self.l_f_bounds.append([max_force, max_force, max_force])
-        self.l_cycle.append(c_init_z) # last node down
-        self.l_cdot_bounds.append([0., 0., 0.])
-        self.l_f_bounds.append([max_force, max_force, max_force])
-
-        # right step cycle
-        self.r_cycle = []
-        self.r_cdot_bounds = []
-        self.r_f_bounds = []
-        for k in range(0, 2):  # 2 nodes down
-            self.r_cycle.append(c_init_z)
-            self.r_cdot_bounds.append([0., 0., 0.])
-            self.r_f_bounds.append([max_force, max_force, max_force])
-        for k in range(0, 8):  # 8 nodes down (other step)
-            self.r_cycle.append(c_init_z)
-            self.r_cdot_bounds.append([0., 0., 0.])
-            self.r_f_bounds.append([max_force, max_force, max_force])
-        for k in range(0, 2):  # 2 nodes down
-            self.r_cycle.append(c_init_z)
-            self.r_cdot_bounds.append([0., 0., 0.])
-            self.r_f_bounds.append([max_force, max_force, max_force])
-        for k in range(0, 8):  # 8 nodes step
-            self.r_cycle.append(c_init_z + sin[k + 1])
-            self.r_cdot_bounds.append([max_velocity, max_velocity, max_velocity])
-            self.r_f_bounds.append([0., 0., 0.])
-        self.r_cycle.append(c_init_z)  # last node down
-        self.r_cdot_bounds.append([0., 0., 0.])
-        self.r_f_bounds.append([max_force, max_force, max_force])
-
-        self.action = ""
-
-    def set(self, action):
-        t = self.nodes - self.step_counter
-
-        for k in range(max(t, 0), self.nodes + 1):
-            ref_id = (k - t)%self.nodes
-
-            if(ref_id == 0):
-                self.action = action
-
-            if self.action == "trot":
-                for i in [0, 3]:
-                    self.c_ref[i].assign(self.l_cycle[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1.*np.array(self.l_cdot_bounds[ref_id]), np.array(self.l_cdot_bounds[ref_id]), nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1.*np.array(self.l_f_bounds[ref_id]), np.array(self.l_f_bounds[ref_id]), nodes=k)
-                for i in [1, 2]:
-                    self.c_ref[i].assign(self.r_cycle[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1.*np.array(self.r_cdot_bounds[ref_id]), np.array(self.r_cdot_bounds[ref_id]), nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1.*np.array(self.r_f_bounds[ref_id]), np.array(self.r_f_bounds[ref_id]), nodes=k)
-
-            elif self.action == "step":
-                for i in range(0, self.contact_model):
-                    self.c_ref[i].assign(self.l_cycle[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1.*np.array(self.l_cdot_bounds[ref_id]), np.array(self.l_cdot_bounds[ref_id]), nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1.*np.array(self.l_f_bounds[ref_id]), np.array(self.l_f_bounds[ref_id]), nodes=k)
-                for i in range(self.contact_model, self.contact_model * self.number_of_legs):
-                    self.c_ref[i].assign(self.r_cycle[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1.*np.array(self.r_cdot_bounds[ref_id]), np.array(self.r_cdot_bounds[ref_id]), nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1.*np.array(self.r_f_bounds[ref_id]), np.array(self.r_f_bounds[ref_id]), nodes=k)
-
-            elif self.action == "jump":
-                for i in range(0, len(c)):
-                    self.c_ref[i].assign(self.jump_c[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1. * np.array(self.jump_cdot_bounds[ref_id]), np.array(self.jump_cdot_bounds[ref_id]), nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1. * np.array(self.jump_f_bounds[ref_id]), np.array(self.jump_f_bounds[ref_id]), nodes=k)
-
-            else:
-                for i in range(0, len(c)):
-                    self.c_ref[i].assign(self.stance[ref_id], nodes=k)
-                    self.cdot[i].setBounds(-1. * np.array(self.cdot_bounds[ref_id]), np.array(self.cdot_bounds[ref_id]), nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1. * np.array(self.f_bounds[ref_id]), np.array(self.f_bounds[ref_id]), nodes=k)
-
-        self.step_counter += 1
-
-
 
 def joy_cb(msg):
     global joy_msg
     joy_msg = msg
 
-def publishPointTrj(points, t, name, frame, color = [0.7, 0.7, 0.7]):
-    marker = Marker()
-    marker.header.frame_id = frame
-    marker.header.stamp = t
-    marker.ns = "SRBD"
-    marker.id = 1000
-    marker.type = Marker.LINE_STRIP
-    marker.action = Marker.ADD
-
-    for k in range(0, points.shape[1]):
-        p = Point()
-        p.x = points[0, k]
-        p.y = points[1, k]
-        p.z = points[2, k]
-        marker.points.append(p)
-
-    marker.color.a = 1.
-    marker.scale.x = 0.005
-    marker.color.r = color[0]
-    marker.color.g = color[1]
-    marker.color.b = color[2]
-
-    pub = rospy.Publisher(name + "_trj", Marker, queue_size=10).publish(marker)
-
-
-
-def publishContactForce(t, f, frame):
-    f_msg = WrenchStamped()
-    f_msg.header.stamp = t
-    f_msg.header.frame_id = frame
-    f_msg.wrench.force.x = f[0]
-    f_msg.wrench.force.y = f[1]
-    f_msg.wrench.force.z = f[2]
-    f_msg.wrench.torque.x = f_msg.wrench.torque.y = f_msg.wrench.torque.z = 0.
-    pub = rospy.Publisher('f' + frame, WrenchStamped, queue_size=10).publish(f_msg)
-
-def SRBDTfBroadcaster(r, o, c_dict, t):
-    br = tf.TransformBroadcaster()
-    br.sendTransform(r,o,t,"SRB","world")
-    for key, val in c_dict.items():
-        br.sendTransform(val, [0., 0., 0., 1.], t, key, "world")
-
-def SRBDViewer(I, base_frame, t, number_of_contacts):
-    marker = Marker()
-    marker.header.frame_id = base_frame
-    marker.header.stamp = t
-    marker.ns = "SRBD"
-    marker.id = 0
-    marker.type = Marker.SPHERE
-    marker.action = Marker.ADD
-    marker.pose.position.x = marker.pose.position.y = marker.pose.position.z = 0.
-    marker.pose.orientation.x = marker.pose.orientation.y = marker.pose.orientation.z = 0.
-    marker.pose.orientation.w = 1.
-    a = I[0,0] + I[1,1] + I[2,2]
-    marker.scale.x = 0.5*(I[2,2] + I[1,1])/a
-    marker.scale.y = 0.5*(I[2,2] + I[0,0])/a
-    marker.scale.z = 0.5*(I[0,0] + I[1,1])/a
-    marker.color.a = 0.8
-    marker.color.r = marker.color.g = marker.color.b = 0.7
-
-    pub = rospy.Publisher('box', Marker, queue_size=10).publish(marker)
-
-    marker_array = MarkerArray()
-    for i in range(0, number_of_contacts):
-        m = Marker()
-        m.header.frame_id = "c" + str(i)
-        m.header.stamp = t
-        m.ns = "SRBD"
-        m.id = i + 1
-        m.type = Marker.SPHERE
-        m.action = Marker.ADD
-        m.pose.position.x = marker.pose.position.y = marker.pose.position.z = 0.
-        m.pose.orientation.x = marker.pose.orientation.y = marker.pose.orientation.z = 0.
-        m.pose.orientation.w = 1.
-        m.scale.x = m.scale.y = m.scale.z = 0.04
-        m.color.a = 0.8
-        m.color.r = m.color.g = 0.0
-        m.color.b = 1.0
-        marker_array.markers.append(m)
-
-    pub2 = rospy.Publisher('contacts', MarkerArray, queue_size=10).publish(marker_array)
-
-def setWorld(frame, kindyn, q, base_link="base_link"):
-    FRAME = kindyn.fk(frame)
-    w_p_f = FRAME(q=q)['ee_pos']
-    w_r_f = FRAME(q=q)['ee_rot']
-    w_T_f = np.identity(4)
-    w_T_f[0:3, 0:3] = w_r_f
-    w_T_f[0:3, 3] = cs.transpose(w_p_f)
-
-    BASE_LINK = kindyn.fk(base_link)
-    w_p_bl = BASE_LINK(q=q)['ee_pos']
-    w_r_bl = BASE_LINK(q=q)['ee_rot']
-    w_T_bl = np.identity(4)
-    w_T_bl[0:3, 0:3] = w_r_bl
-    w_T_bl[0:3, 3] = cs.transpose(w_p_bl)
-
-    w_T_bl_new = np.dot(np.linalg.inv(w_T_f), w_T_bl)
-
-    rho = R.from_matrix(w_T_bl_new[0:3, 0:3]).as_quat()
-
-    q[0:3] = w_T_bl_new[0:3, 3]
-    q[3:7] = rho
-
-class cartesIO_struct:
-    def __init__(self, distal_link, base_link="world"):
-        self.pose_publisher = rospy.Publisher(f"/cartesian/{distal_link}/reference", PoseStamped, queue_size=1)
-        self.vel_publisher = rospy.Publisher(f"/cartesian/{distal_link}/velocity_reference", TwistStamped, queue_size=1)
-
-        self.pose = PoseStamped()
-        self.pose.pose.position.x = self.pose.pose.position.y = self.pose.pose.position.z = 0.
-        self.pose.pose.orientation.x = self.pose.pose.orientation.y = self.pose.pose.orientation.z = 0.
-        self.pose.pose.orientation.w = 1.
-        self.pose.header.frame_id = "world"
-
-        self.vel = TwistStamped()
-        self.vel.twist.angular.x = self.vel.twist.angular.y = self.vel.twist.angular.z = 0.
-        self.vel.header.frame_id = "world"
-
-    def setPosition(self, p):
-        self.pose.pose.position.x = p[0]
-        self.pose.pose.position.y = p[1]
-        self.pose.pose.position.z = p[2]
-
-    def setOrientation(self, o):
-        self.pose.pose.orientation.x = o[0]
-        self.pose.pose.orientation.y = o[1]
-        self.pose.pose.orientation.z = o[2]
-
-    def setLinearVelocity(self, v):
-        self.vel.twist.linear.x = v[0]
-        self.vel.twist.linear.y = v[1]
-        self.vel.twist.linear.z = v[2]
-
-    def setAngularVelocity(self, w):
-        self.vel.twist.angular.x = w[0]
-        self.vel.twist.angular.y = w[1]
-        self.vel.twist.angular.z = w[2]
-
-    def publish(self, t):
-        self.pose.header.stamp = t
-        self.vel.header.stamp = t
-        self.pose_publisher.publish(self.pose)
-        self.vel_publisher.publish(self.vel)
-
-
-
-class cartesIO:
-    def __init__(self, contact_frames):
-        self.contacts = dict()
-        for frame in contact_frames:
-            self.contacts[frame] = cartesIO_struct(frame)
-
-        self.com = cartesIO_struct("com")
-
-        self.base_link = cartesIO_struct("base_link")
-
-    #c is a dict {contact_frame: [contacts]}
-    def publish(self, r, rdot, o, w,  c, cdot, t):
-
-        self.com.setPosition(r)
-        #self.com.setLinearVelocity(rdot)
-
-        self.base_link.setOrientation(o)
-        #self.base_link.setAngularVelocity(w)
-
-        for frame in c:
-            contact_list = c[frame]
-            if len(contact_list) == 2: #line feet
-                p0 = contact_list[0]
-                p1 = contact_list[1]
-                p = (p0 + p1)/2.
-                self.contacts[frame].setPosition(p)
-
-            #self.contacts[frame].setLinearVelocity(cdot[frame][0])
-
-        self.com.publish(t)
-        self.base_link.publish(t)
-        for frame in c:
-            self.contacts[frame].publish(t)
 
 #horizon_ros_utils.roslaunch("horizon_examples", "SRBD_kangaroo.launch")
 horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
@@ -477,7 +149,7 @@ if len(joint_init) == 0:
 
 if rospy.has_param("world_frame_link"):
     world_frame_link = rospy.get_param("world_frame_link")
-    setWorld(world_frame_link, kindyn, joint_init)
+    utilities.setWorld(world_frame_link, kindyn, joint_init)
     print(f"world_frame_link: {world_frame_link}")
 
 print(f"joint_init: {joint_init}")
@@ -791,8 +463,8 @@ solver = solver.Solver.make_solver(SOLVER(), prb, opts)
 """
 Walking patter generator and scheduler
 """
-wpg = steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, ns, number_of_legs=number_of_legs, contact_model=contact_model, max_force=max_contact_force, max_velocity=max_contact_velocity)
-ci = cartesIO(["left_sole_link", "right_sole_link"])
+wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, ns, number_of_legs=number_of_legs, contact_model=contact_model, max_force=max_contact_force, max_velocity=max_contact_velocity)
+ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 while not rospy.is_shutdown():
     """
     Automatically set initial guess from solution to variables in variables_dict
@@ -858,12 +530,12 @@ while not rospy.is_shutdown():
         c0_hist['c' + str(i)] = solution['c' + str(i)][:, 0]
 
     t = rospy.Time().now()
-    SRBDTfBroadcaster(solution['r'][:, 0], solution['o'][:, 0], c0_hist, t)
+    utilities.SRBDTfBroadcaster(solution['r'][:, 0], solution['o'][:, 0], c0_hist, t)
     for i in range(0, nc):
-        publishContactForce(t, solution['f' + str(i)][:, 0], 'c' + str(i))
-        publishPointTrj(solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-    SRBDViewer(I, "SRB", t, nc)
-    publishPointTrj(solution["r"], t, "SRB", "world")
+        viz.publishContactForce(t, solution['f' + str(i)][:, 0], 'c' + str(i))
+        viz.publishPointTrj(solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
+    viz.SRBDViewer(I, "SRB", t, nc) #TODO: should we use w_R_b * I * w_R_b.T?
+    viz.publishPointTrj(solution["r"], t, "SRB", "world")
 
     cc = dict()
     ff = dict()
