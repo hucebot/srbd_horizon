@@ -12,48 +12,18 @@ from horizon.ros.replay_trajectory import *
 import time
 from horizon.ros import utils as horizon_ros_utils
 from ttictoc import tic,toc
-import tf
 from geometry_msgs.msg import WrenchStamped, PoseStamped, TwistStamped
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Float32
-from scipy.spatial.transform import Rotation as R
 import viz
 import wpg
+import utilities
 
 SOLVER = lambda: 'ipopt'
 
 def joy_cb(msg):
     global joy_msg
     joy_msg = msg
-
-def SRBDTfBroadcaster(r, o, c_dict, t):
-    br = tf.TransformBroadcaster()
-    br.sendTransform(r,o,t,"SRB","world")
-    for key, val in c_dict.items():
-        br.sendTransform(val, [0., 0., 0., 1.], t, key, "world")
-
-def setWorld(frame, kindyn, q, base_link="base_link"):
-    FRAME = kindyn.fk(frame)
-    w_p_f = FRAME(q=q)['ee_pos']
-    w_r_f = FRAME(q=q)['ee_rot']
-    w_T_f = np.identity(4)
-    w_T_f[0:3, 0:3] = w_r_f
-    w_T_f[0:3, 3] = cs.transpose(w_p_f)
-
-    BASE_LINK = kindyn.fk(base_link)
-    w_p_bl = BASE_LINK(q=q)['ee_pos']
-    w_r_bl = BASE_LINK(q=q)['ee_rot']
-    w_T_bl = np.identity(4)
-    w_T_bl[0:3, 0:3] = w_r_bl
-    w_T_bl[0:3, 3] = cs.transpose(w_p_bl)
-
-    w_T_bl_new = np.dot(np.linalg.inv(w_T_f), w_T_bl)
-
-    rho = R.from_matrix(w_T_bl_new[0:3, 0:3]).as_quat()
-
-    q[0:3] = w_T_bl_new[0:3, 3]
-    q[3:7] = rho
-
 class cartesIO_struct:
     def __init__(self, distal_link, base_link="world"):
         self.pose_publisher = rospy.Publisher(f"/cartesian/{distal_link}/reference", PoseStamped, queue_size=1)
@@ -255,7 +225,7 @@ if len(joint_init) == 0:
 
 if rospy.has_param("world_frame_link"):
     world_frame_link = rospy.get_param("world_frame_link")
-    setWorld(world_frame_link, kindyn, joint_init)
+    utilities.setWorld(world_frame_link, kindyn, joint_init)
     print(f"world_frame_link: {world_frame_link}")
 
 print(f"joint_init: {joint_init}")
@@ -643,7 +613,7 @@ while not rospy.is_shutdown():
         c0_hist['c' + str(i)] = solution['c' + str(i)][:, 0]
 
     t = rospy.Time().now()
-    SRBDTfBroadcaster(solution['r'][:, 0], solution['o'][:, 0], c0_hist, t)
+    utilities.SRBDTfBroadcaster(solution['r'][:, 0], solution['o'][:, 0], c0_hist, t)
     for i in range(0, nc):
         viz.publishContactForce(t, solution['f' + str(i)][:, 0], 'c' + str(i))
         viz.publishPointTrj(solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
