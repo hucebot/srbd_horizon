@@ -20,6 +20,8 @@ import wpg
 import utilities
 import cartesio #todo: use bindings!
 
+import lip
+
 SOLVER = lambda: 'ipopt'
 
 def joy_cb(msg):
@@ -353,7 +355,15 @@ print(f"I centroidal in base: {I}")
 w_R_b = utils.toRot(o)
 
 SRBD = kin_dyn.SRBD(m, w_R_b * I * w_R_b.T, f, r, rddot, c, w, wdot)
-prb.createConstraint("SRBD", SRBD, bounds=dict(lb=np.zeros(6), ub=np.zeros(6)), nodes=list(range(0, ns)))
+LIP = lip.LIP_dynamics(m, f, r, rddot, c)
+#prb.createConstraint("SRBD", SRBD, nodes=list(range(0, ns)))
+prb.createConstraint("SRBD", SRBD, nodes=list(range(0, 5)))
+prb.createConstraint("LIPM", LIP, nodes=list(range(5, ns)))
+
+# fixed com height constraint
+#prb.createConstraint("lip_com_height", r[2] - r.getVarOffset(-1)[2], nodes=range(int(ns/2), ns+1))
+prb.createConstraint("lip_com_height", r[2] - com[2], nodes=range(5, ns+1))
+prb.createConstraint("lip_zero_angular_momentum", w, nodes=range(5, ns+1))
 
 """
 Create solver
