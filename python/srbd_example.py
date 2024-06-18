@@ -19,6 +19,7 @@ import viz
 import wpg
 import utilities
 import cartesio #todo: use bindings!
+import solver_options
 
 import lip
 
@@ -29,9 +30,7 @@ def joy_cb(msg):
     joy_msg = msg
 
 
-#horizon_ros_utils.roslaunch("horizon_examples", "SRBD_kangaroo.launch")
 horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
-#horizon_ros_utils.roslaunch("horizon_examples", "SRBD_spot.launch")
 time.sleep(3.)
 
 """
@@ -82,12 +81,12 @@ for i in range(0, nc):
 """ CoM Velocity and paramter to handle references """
 rdot = prb.createStateVariable("rdot", 3) # CoM vel
 rdot_ref = prb.createParameter('rdot_ref', 3)
-rdot_ref.assign([0. ,0. , 0.], nodes=range(1, ns+1))
+rdot_ref.assign([0., 0., 0.], nodes=range(1, ns+1))
 
 """ Base angular Velocity and parameter to handle references """
 w = prb.createStateVariable("w", 3) # base vel
 w_ref = prb.createParameter('w_ref', 3)
-w_ref.assign([0. ,0. , 0.], nodes=range(1, ns+1))
+w_ref.assign([0., 0., 0.], nodes=range(1, ns+1))
 
 """ Variable to collect all velocity states """
 qdot = variables.Aggregate()
@@ -282,19 +281,11 @@ for l in range(0, number_of_legs):
         fpi.append(l * contact_model)
         fpi.append(l * contact_model + contact_model - 1)
 
-#fpi = [0, 3, 4, 7] #for knagaroo expected result
-#fpi = [0, 1, 2, 3] #for spot expected result
-
-
 d_initial_1 = -(initial_foot_position[fpi[0]][0:2] - initial_foot_position[fpi[2]][0:2])
-#relative_pos_y_1_4 = prb.createConstraint("relative_pos_y_1_4", -c[fpi[0]][1] + c[fpi[2]][1], bounds=dict(ub= d_initial_1[1], lb=d_initial_1[1] - max_clearance_y))
 relative_pos_y_1_4 = prb.createResidual("relative_pos_y_1_4", 1e2 * (-c[fpi[0]][1] + c[fpi[2]][1] - d_initial_1[1]))
-#relative_pos_x_1_4 = prb.createConstraint("relative_pos_x_1_4", -c[fpi[0]][0] + c[fpi[2]][0], bounds=dict(ub= d_initial_1[0] + max_clearance_x, lb=d_initial_1[0] - max_clearance_x))
 relative_pos_x_1_4 = prb.createResidual("relative_pos_x_1_4", 1e2 * (-c[fpi[0]][0] + c[fpi[2]][0] - d_initial_1[0]))
 d_initial_2 = -(initial_foot_position[fpi[1]][0:2] - initial_foot_position[fpi[3]][0:2])
-#relative_pos_y_3_6 = prb.createConstraint("relative_pos_y_3_6", -c[fpi[1]][1] + c[fpi[3]][1], bounds=dict(ub= d_initial_2[1], lb=d_initial_2[1] - max_clearance_y))
 relative_pos_y_3_6 = prb.createResidual("relative_pos_y_3_6", 1e2 * (-c[fpi[1]][1] + c[fpi[3]][1] - d_initial_2[1]))
-#relative_pos_x_3_6 = prb.createConstraint("relative_pos_x_3_6", -c[fpi[1]][0] + c[fpi[3]][0], bounds=dict(ub= d_initial_2[0] + max_clearance_x, lb=d_initial_2[0] - max_clearance_x))
 relative_pos_x_3_6 = prb.createResidual("relative_pos_x_3_6", 1e2 * (-c[fpi[1]][0] + c[fpi[3]][0] - d_initial_2[0]))
 
 min_f_gain = rospy.get_param("min_f_gain", 1e-2)
@@ -312,8 +303,6 @@ for i in range(0, nc):
     c_ref[i] = prb.createParameter("c_ref" + str(i), 1)
     c_ref[i].assign(initial_foot_position[i][2], nodes=range(0, ns+1))
     prb.createConstraint("cz_tracking" + str(i), c[i][2] - c_ref[i])
-    #prb.createCost("cz_tracking" + str(i), 1e6 * cs.sumsqr(c[i][2] - c_ref[i]))
-
 
 """
 Friction cones and force unilaterality constraint
@@ -337,9 +326,6 @@ if contact_model > 1:
         prb.createConstraint("relative_vel_left_" + str(i), cdot[0][0:2] - cdot[i][0:2])
     for i in range(contact_model + 1, 2 * contact_model):
         prb.createConstraint("relative_vel_right_" + str(i), cdot[contact_model][0:2] - cdot[i][0:2])
-if contact_model == 1 and number_of_legs == 4: #quadrupedal case
-    prb.createConstraint("relative_vel_1" + str(i), cdot[fpi[0]][0:2] - cdot[fpi[3]][0:2])
-    prb.createConstraint("relative_vel_2" + str(i), cdot[fpi[1]][0:2] - cdot[fpi[2]][0:2])
 
 """
 Single Rigid Body Dynamics constraint: data are taken from the loaded urdf model in nominal configuration
@@ -371,27 +357,9 @@ Create solver
 max_iteration = rospy.get_param("max_iteration", 20)
 print(f"max_iteration: {max_iteration}")
 
-i_opts = {
-        'ipopt.tol': 0.001,
-        'ipopt.constr_viol_tol': 0.001,
-        'ipopt.max_iter': 100,
-        'ipopt.linear_solver': 'ma27',
-        'ipopt.warm_start_init_point': 'no',
-        'ipopt.fast_step_computation': 'no',
-}
+i_opts = solver_options.ipopt_offline_solver_options()
 if SOLVER() == 'gnsqp':
-    i_opts = dict()
-    i_opts['qp_solver'] = 'osqp'
-    i_opts['warm_start_primal'] = True
-    i_opts['warm_start_dual'] = True
-    i_opts['gnsqp.eps_regularization'] = 1e-4
-    i_opts['merit_derivative_tolerance'] = 1e-3
-    i_opts['constraint_violation_tolerance'] = ns * 1e-3
-    i_opts['osqp.polish'] = True # without this
-    i_opts['osqp.delta'] = 1e-6 # and this, it does not converge!
-    i_opts['osqp.verbose'] = False
-    i_opts['osqp.rho'] = 0.02
-    i_opts['osqp.scaled_termination'] = False
+    i_opts = solver_options.sqp_offline_solver_options(ns)
 
 
 solver_offline = solver.Solver.make_solver(SOLVER(), prb, i_opts)
@@ -418,7 +386,7 @@ print(f"hz: {hz}")
 rate = rospy.Rate(hz)  # 10hz
 rospy.Subscriber('/joy', Joy, joy_cb)
 global joy_msg
-joy_msg = None #rospy.wait_for_message("joy", Joy)
+joy_msg = None
 
 solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
 srbd_pub = rospy.Publisher("srbd_constraint", WrenchStamped, queue_size=10)
@@ -429,41 +397,9 @@ srbd_msg = WrenchStamped()
 """
 online_solver
 """
-opts = {
-        #'ipopt.adaptive_mu_globalization': 'never-monotone-mode',
-        #'ipopt.mu_allow_fast_monotone_decrease': 'no',
-        #'ipopt.mu_linear_decrease_factor': 0.1,
-        #'ipopt.max_cpu_time': 3e-2,
-        #'ipopt.hessian_approximation': 'limited-memory',
-        #'ipopt.hessian_approximation_space': 'all-variables',
-        #'ipopt.limited_memory_aug_solver': 'extended',
-        #'ipopt.linear_system_scaling': 'slack-based',
-        #'ipopt.ma27_ignore_singularity': 'yes',
-        #'ipopt.ma27_skip_inertia_check': 'yes',
-        #'ipopt.hessian_constant': 'yes',
-        #'ipopt.jac_c_constant' : 'yes',
-        #'ipopt.nlp_scaling_method': 'none',
-        #'ipopt.magic_steps': 'yes',
-        'ipopt.accept_every_trial_step': 'yes',
-        'ipopt.tol': 0.001,
-        'ipopt.constr_viol_tol': 0.001,
-        'ipopt.max_iter': max_iteration,
-        'ipopt.linear_solver': 'ma27',
-        #'ipopt.warm_start_entire_iterate': 'yes',
-        #'ipopt.warm_start_same_structure': 'yes',
-        'ipopt.warm_start_init_point': 'yes',
-        'ipopt.fast_step_computation': 'yes',
-        'ipopt.print_level': 0,
-        'ipopt.suppress_all_output': 'yes',
-        'ipopt.sb': 'yes',
-        'print_time': 0
-}
+opts = solver_options.ipopt_online_solver_options(max_iteration)
 if SOLVER() == 'gnsqp':
-    opts = {"gnsqp.max_iter": 1,
-            'gnsqp.osqp.scaled_termination': True,
-            'gnsqp.eps_regularization': 1e-4,
-    }
-
+    opts = solver_options.sqp_online_solver_options(max_iterations=1)
 
 
 solver = solver.Solver.make_solver(SOLVER(), prb, opts)
@@ -518,21 +454,12 @@ while not rospy.is_shutdown():
         wpg.set("step")
     elif motion == "jumping":
         wpg.set("jump")
-        d_actual_1 = -(solution['c' + str(fpi[0])][0:2, 1] - solution['c' + str(fpi[2])][0:2, 1])
-        d_actual_2 = -(solution['c' + str(fpi[1])][0:2, 1] - solution['c' + str(fpi[3])][0:2, 1])
     else:
         wpg.set("standing")
 
 
-
-
     tic()
     solver.solve()
-
-    #print(f"line search: {solver.getLineSearchComputationTime()}")
-    #print(f"QP: {solver.getQPComputationTime()}")
-    #print(f"Hessian: {solver.getHessianComputationTime()}")
-
 
     solution_time_pub.publish(toc())
     solution = solver.getSolutionDict()
