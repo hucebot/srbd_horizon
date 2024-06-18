@@ -355,8 +355,6 @@ class cartesIO:
         for frame in c:
             self.contacts[frame].publish(t)
 
-
-
 #horizon_ros_utils.roslaunch("horizon_examples", "SRBD_kangaroo.launch")
 horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
 #horizon_ros_utils.roslaunch("horizon_examples", "SRBD_spot.launch")
@@ -738,11 +736,13 @@ print(f"hz: {hz}")
 rate = rospy.Rate(hz)  # 10hz
 rospy.Subscriber('/joy', Joy, joy_cb)
 global joy_msg
-joy_msg = rospy.wait_for_message("joy", Joy)
+joy_msg = None #rospy.wait_for_message("joy", Joy)
 
 solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
 srbd_pub = rospy.Publisher("srbd_constraint", WrenchStamped, queue_size=10)
 srbd_msg = WrenchStamped()
+
+
 
 """
 online_solver
@@ -807,46 +807,37 @@ while not rospy.is_shutdown():
         c[i].setBounds(solution['c' + str(i)][: ,1], solution['c' + str(i)][: ,1], 0)
         cdot[i].setBounds(solution['cdot' + str(i)][:, 1], solution['cdot' + str(i)][:, 1], 0)
 
+    motion = "standing"
+    if joy_msg is not None:
+        if joy_msg.buttons[4]:
+            motion = "walking"
+        if joy_msg.buttons[5]:
+            motion = "jumping"
 
-    #JOYSTICK
-    alphaX = alphaY = 0.1
-    if joy_msg.buttons[4] or joy_msg.buttons[5]:
-        alphaX = 0.4
-        alphaY = 0.3
-
-    rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=range(1, ns+1)) #com velocities
-    w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=range(1, ns + 1)) #base angular velocities
-
-    if(joy_msg.buttons[3]):
-        Wo.assign(cs.sqrt(1e5))
-    else:
-        Wo.assign(0.)
-
-    if(joy_msg.buttons[4]):
-        if contact_model == 1 and number_of_legs == 4: #quadrupedal case
-            wpg.set("trot")
-            #relative_pos_y_1_4.setBounds(ub=d_initial_1[1] + max_clearance_y, lb=d_initial_1[1] - max_clearance_y)
-            #relative_pos_y_3_6.setBounds(ub=d_initial_2[1] + max_clearance_y, lb=d_initial_2[1] - max_clearance_y)
+    if joy_msg is not None:
+        rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=range(1, ns+1)) #com velocities
+        w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=range(1, ns + 1)) #base angular velocities
+        if(joy_msg.buttons[3]):
+            Wo.assign(cs.sqrt(1e5))
         else:
-            wpg.set("step")
-            #relative_pos_y_1_4.setBounds(ub=d_initial_1[1], lb=d_initial_1[1] - max_clearance_y)
-            #relative_pos_y_3_6.setBounds(ub=d_initial_2[1], lb=d_initial_2[1] - max_clearance_y)
-        #relative_pos_x_1_4.setBounds(ub=d_initial_1[0] + max_clearance_x, lb=d_initial_1[0] - max_clearance_x)
-        #relative_pos_x_3_6.setBounds(ub=d_initial_2[0] + max_clearance_x, lb=d_initial_2[0] - max_clearance_x)
-    elif (joy_msg.buttons[5]):
+            Wo.assign(0.)
+    else:
+        rdot_ref.assign([0., 0., 0.], nodes=range(1, ns+1))
+        w_ref.assign([0., 0., 0.], nodes=range(1, ns + 1))
+        Wo.assign(0.)
+    
+
+    if motion == "walking":
+        alphaX, alphaY = 0.4, 0.3
+        wpg.set("step")
+    elif motion == "jumping":
+        alphaX, alphaY = 0.4, 0.3
         wpg.set("jump")
         d_actual_1 = -(solution['c' + str(fpi[0])][0:2, 1] - solution['c' + str(fpi[2])][0:2, 1])
         d_actual_2 = -(solution['c' + str(fpi[1])][0:2, 1] - solution['c' + str(fpi[3])][0:2, 1])
-        #relative_pos_y_1_4.setBounds(ub=d_actual_1[1], lb=d_actual_1[1] - max_clearance_y)
-        #relative_pos_y_3_6.setBounds(ub=d_actual_2[1], lb=d_actual_2[1])
-        #relative_pos_x_1_4.setBounds(ub=d_actual_1[0], lb=d_actual_1[0])
-        #relative_pos_x_3_6.setBounds(ub=d_actual_2[0] + max_clearance_x, lb=d_actual_2[0] - max_clearance_x)
     else:
-        wpg.set("cazzi")
-        #relative_pos_y_1_4.setBounds(ub=d_initial_1[1] + max_clearance_y, lb=d_initial_1[1] - max_clearance_y)
-        #relative_pos_y_3_6.setBounds(ub=d_initial_2[1] + max_clearance_y, lb=d_initial_2[1] - max_clearance_y)
-        #relative_pos_x_1_4.setBounds(ub=d_initial_1[0] + max_clearance_x, lb=d_initial_1[0] - max_clearance_x)
-        #relative_pos_x_3_6.setBounds(ub=d_initial_2[0] + max_clearance_x, lb=d_initial_2[0] - max_clearance_x)
+        alphaX = alphaY = 0.1
+        wpg.set("standing")
 
 
 
