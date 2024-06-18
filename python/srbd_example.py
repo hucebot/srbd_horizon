@@ -487,6 +487,11 @@ while not rospy.is_shutdown():
             motion = "jumping"
 
     if joy_msg is not None:
+        if motion == "standing":
+            alphaX, alphaY = 0.1, 0.1
+        else:
+            alphaX, alphaY = 0.4, 0.3
+
         rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=range(1, ns+1)) #com velocities
         w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=range(1, ns + 1)) #base angular velocities
         if(joy_msg.buttons[3]):
@@ -500,15 +505,12 @@ while not rospy.is_shutdown():
     
 
     if motion == "walking":
-        alphaX, alphaY = 0.4, 0.3
         wpg.set("step")
     elif motion == "jumping":
-        alphaX, alphaY = 0.4, 0.3
         wpg.set("jump")
         d_actual_1 = -(solution['c' + str(fpi[0])][0:2, 1] - solution['c' + str(fpi[2])][0:2, 1])
         d_actual_2 = -(solution['c' + str(fpi[1])][0:2, 1] - solution['c' + str(fpi[3])][0:2, 1])
     else:
-        alphaX = alphaY = 0.1
         wpg.set("standing")
 
 
