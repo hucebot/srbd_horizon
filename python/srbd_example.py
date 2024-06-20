@@ -22,6 +22,7 @@ import cartesio #todo: use bindings!
 import solver_options
 
 import lip
+import keyboard
 
 SOLVER = lambda: 'ipopt'
 
@@ -431,13 +432,18 @@ while not rospy.is_shutdown():
             motion = "walking"
         if joy_msg.buttons[5]:
             motion = "jumping"
+    else:
+        if keyboard.is_pressed('ctrl'):
+            motion = "walking"
+        if keyboard.is_pressed('space'):
+            motion = "jumping"
+
+    if motion == "standing":
+        alphaX, alphaY = 0.1, 0.1
+    else:
+        alphaX, alphaY = 0.4, 0.3
 
     if joy_msg is not None:
-        if motion == "standing":
-            alphaX, alphaY = 0.1, 0.1
-        else:
-            alphaX, alphaY = 0.4, 0.3
-
         rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=range(1, ns+1)) #com velocities
         w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=range(1, ns + 1)) #base angular velocities
         if(joy_msg.buttons[3]):
@@ -445,8 +451,11 @@ while not rospy.is_shutdown():
         else:
             Wo.assign(0.)
     else:
-        rdot_ref.assign([0., 0., 0.], nodes=range(1, ns+1))
-        w_ref.assign([0., 0., 0.], nodes=range(1, ns + 1))
+        axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
+        axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
+
+        rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=range(1, ns+1)) #com velocities
+        w_ref.assign([0, 0, 0], nodes=range(1, ns + 1)) #base angular velocities
         Wo.assign(0.)
     
 
