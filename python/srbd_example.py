@@ -404,6 +404,9 @@ if SOLVER() == 'gnsqp':
 
 
 solver = solver.Solver.make_solver(SOLVER(), prb, opts)
+import ddp
+solver = ddp.DDPSolver(prb, opts={})
+exit()
 #solver.set_iteration_callback()
 
 
