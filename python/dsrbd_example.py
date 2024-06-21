@@ -50,7 +50,6 @@ if urdf == "":
 
 kindyn = cas_kin_dyn.CasadiKinDyn(urdf)
 
-
 """
 Creates problem STATE variables
 """
@@ -101,46 +100,19 @@ for i in range(0, nc):
     qdot.addVariable(cdot[i])
 
 """
-Creates problem CONTROL variables
-"""
-"""
-Creates problem CONTROL variables: CoM acceleration and base angular accelerations
-"""
-rddot = prb.createInputVariable("rddot", 3) # CoM acc
-wdot = prb.createInputVariable("wdot", 3) # base acc
-
-""" Variable to collect all acceleration controls """
-qddot = variables.Aggregate()
-qddot.addVariable(rddot)
-qddot.addVariable(wdot)
-
-"""
 Contacts acceleration and forces
 """
+""" Variable to collect all acceleration controls """
+qddot = variables.Aggregate()
+
 cddot = dict()
 f = dict()
 for i in range(0, nc):
     cddot[i] = prb.createInputVariable("cddot" + str(i), 3) # Contact i acc
-    qddot.addVariable(cddot[i])
-
     f[i] = prb.createInputVariable("f" + str(i), 3) # Contact i forces
 
 """
 Formulate discrete time dynamics using multiple_shooting and RK2 integrator
-"""
-xdot = utils.double_integrator_with_floating_base(q.getVars(), qdot.getVars(), qddot.getVars(), base_velocity_reference_frame=cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
-prb.setDynamics(xdot)
-prb.setDt(T/ns)
-transcription_method = rospy.get_param("transcription_method", 'multiple_shooting')  # can choose between 'multiple_shooting' and 'direct_collocation'
-transcription_opts = dict(integrator='RK2') # integrator used by the multiple_shooting
-if transcription_method == 'direct_collocation':
-    transcription_opts = dict()
-th = Transcriptor.make_method(transcription_method, prb, opts=transcription_opts)
-
-"""
-Setting initial state, bounds and limits
-"""
-"""
 joint_init is used to initialize the urdf model and retrieve information such as: CoM, Inertia, atc... 
 at the nominal configuration given by joint_init
 """
@@ -155,6 +127,28 @@ if rospy.has_param("world_frame_link"):
     print(f"world_frame_link: {world_frame_link}")
 
 print(f"joint_init: {joint_init}")
+m = kindyn.mass()
+print(f"mass: {m}")
+M = kindyn.crba()
+I = M(q=joint_init)['B'][3:6, 3:6]
+print(f"I centroidal in base: {I}")
+w_R_b = utils.toRot(o)
+rddot, wdot = kin_dyn.fSRBD(m, w_R_b * I * w_R_b.T, f, r, c, w)
+
+RDDOT = cs.Function('rddot', [prb.getInput().getVars()], [rddot])
+WDOT = cs.Function('wdot', [prb.getState().getVars(), prb.getInput().getVars()], [wdot])
+
+qddot.addVariable(cs.vcat([rddot, wdot]))
+for i in range(0, nc):
+    qddot.addVariable(cddot[i])
+xdot = utils.double_integrator_with_floating_base(q.getVars(), qdot.getVars(), qddot.getVars(), base_velocity_reference_frame=cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+prb.setDynamics(xdot)
+prb.setDt(T/ns)
+transcription_method = rospy.get_param("transcription_method", 'multiple_shooting')  # can choose between 'multiple_shooting' and 'direct_collocation'
+transcription_opts = dict(integrator='RK2') # integrator used by the multiple_shooting
+if transcription_method == 'direct_collocation':
+    transcription_opts = dict()
+th = Transcriptor.make_method(transcription_method, prb, opts=transcription_opts)
 
 """
 foot_frames parameters are used to retrieve initial position of the contacts given the initial pose of the robot.
@@ -168,8 +162,6 @@ if(len(foot_frames) != nc):
     print(f"foot frames number shopuld match with number of contacts! {len(foot_frames)} != {nc}")
     exit()
 print(f"foot_frames: {foot_frames}")
-
-
 
 max_contact_force = rospy.get_param("max_contact_force", 1000.)
 print(f"max_contact_force: {max_contact_force}")
@@ -258,9 +250,6 @@ min_qddot_gain = rospy.get_param("min_qddot_gain", 1e0)
 print(f"min_qddot_gain: {min_qddot_gain}")
 prb.createResidual("min_qddot", np.sqrt(min_qddot_gain) * (qddot.getVars()), nodes=list(range(0, ns)))
 
-#for i in range(len(cdot)):
-#    prb.createCost("min_cdot" + str(i), 1e2 * cs.sumsqr(cdot[i]))
-
 """
 Set up som CONSTRAINTS
 """
@@ -329,30 +318,6 @@ if contact_model > 1:
         prb.createConstraint("relative_vel_right_" + str(i), cdot[contact_model][0:2] - cdot[i][0:2])
 
 """
-Single Rigid Body Dynamics constraint: data are taken from the loaded urdf model in nominal configuration
-        m(rddot - g) - sum(f) = 0
-        Iwdot + w x Iw - sum(r - p) x f = 0
-"""
-m = kindyn.mass()
-print(f"mass: {m}")
-M = kindyn.crba()
-I = M(q=joint_init)['B'][3:6, 3:6]
-print(f"I centroidal in base: {I}")
-
-w_R_b = utils.toRot(o)
-
-SRBD = kin_dyn.SRBD(m, w_R_b * I * w_R_b.T, f, r, rddot, c, w, wdot)
-LIP = lip.LIP_dynamics(m, f, r, rddot, c)
-#prb.createConstraint("SRBD", SRBD, nodes=list(range(0, ns)))
-prb.createConstraint("SRBD", SRBD, nodes=list(range(0, 5)))
-prb.createConstraint("LIPM", LIP, nodes=list(range(5, ns)))
-
-# fixed com height constraint
-#prb.createConstraint("lip_com_height", r[2] - r.getVarOffset(-1)[2], nodes=range(int(ns/2), ns+1))
-prb.createConstraint("lip_com_height", r[2] - com[2], nodes=range(5, ns+1))
-prb.createConstraint("lip_zero_angular_momentum", w, nodes=range(5, ns+1))
-
-"""
 Create solver
 """
 max_iteration = rospy.get_param("max_iteration", 20)
@@ -362,9 +327,8 @@ i_opts = solver_options.ipopt_offline_solver_options()
 if SOLVER() == 'gnsqp':
     i_opts = solver_options.sqp_offline_solver_options(ns)
 
-
 solver_offline = solver.Solver.make_solver(SOLVER(), prb, i_opts)
-#solver_offline.set_iteration_callback()
+# solver_offline.set_iteration_callback()
 
 solver_offline.solve()
 solution = solver_offline.getSolutionDict()
@@ -372,8 +336,8 @@ solution = solver_offline.getSolutionDict()
 """
 Dictionary to store variables used for warm-start
 """
-variables_dict = {"r": r, "rdot": rdot, "rddot": rddot,
-                  "o": o, "w": w, "wdot": wdot}
+variables_dict = {"r": r, "rdot": rdot,
+                  "o": o, "w": w}
 for i in range(0, nc):
     variables_dict["c" + str(i)] = c[i]
     variables_dict["cdot" + str(i)] = cdot[i]
@@ -393,8 +357,6 @@ solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
 srbd_pub = rospy.Publisher("srbd_constraint", WrenchStamped, queue_size=10)
 srbd_msg = WrenchStamped()
 
-
-
 """
 online_solver
 """
@@ -402,31 +364,36 @@ opts = solver_options.ipopt_online_solver_options(max_iteration)
 if SOLVER() == 'gnsqp':
     opts = solver_options.sqp_online_solver_options(max_iterations=1)
 
-
-solver = solver.Solver.make_solver(SOLVER(), prb, opts)
+#solver = solver.Solver.make_solver(SOLVER(), prb, opts)
 import ddp
-solver = ddp.DDPSolver(prb, opts={})
-exit()
-#solver.set_iteration_callback()
+opts = dict()
+print(prb.getState().getVars())
+opts["initial_state"] = np.concatenate([r.getBounds()[0][0:3,0], o.getBounds()[0][0:3,0], c[0].getBounds()[0][0:3,0], c[1].getBounds()[0][0:3,0], c[2].getBounds()[0][0:3,0],
+        c[3].getBounds()[0][0:3,0], rdot.getBounds()[0][0:3, 0], w.getBounds()[0][0:3, 0], cdot[0].getBounds()[0][0:3, 0],
+        cdot[1].getBounds()[0][0:3, 0], cdot[2].getBounds()[0][0:3, 0], cdot[3].getBounds()[0][0:3, 0]]) #take init from prev solution
+solver = ddp.DDPSolver(prb, opts=opts)
+
+# solver.set_iteration_callback()
 
 
 """
 Walking patter generator and scheduler
 """
-wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, ns, number_of_legs=number_of_legs, contact_model=contact_model, max_force=max_contact_force, max_velocity=max_contact_velocity)
+wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, ns, number_of_legs=number_of_legs,
+                      contact_model=contact_model, max_force=max_contact_force, max_velocity=max_contact_velocity)
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 while not rospy.is_shutdown():
     """
     Automatically set initial guess from solution to variables in variables_dict
     """
     mat_storer.setInitialGuess(variables_dict, solution)
-    #open loop
+    # open loop
     r.setBounds(solution['r'][:, 1], solution['r'][:, 1], 0)
     rdot.setBounds(solution['rdot'][:, 1], solution['rdot'][:, 1], 0)
     o.setBounds(solution['o'][:, 1], solution['o'][:, 1], 0)
     w.setBounds(solution['w'][:, 1], solution['w'][:, 1], 0)
     for i in range(0, nc):
-        c[i].setBounds(solution['c' + str(i)][: ,1], solution['c' + str(i)][: ,1], 0)
+        c[i].setBounds(solution['c' + str(i)][:, 1], solution['c' + str(i)][:, 1], 0)
         cdot[i].setBounds(solution['cdot' + str(i)][:, 1], solution['cdot' + str(i)][:, 1], 0)
 
     motion = "standing"
@@ -447,9 +414,11 @@ while not rospy.is_shutdown():
         alphaX, alphaY = 0.4, 0.3
 
     if joy_msg is not None:
-        rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=range(1, ns+1)) #com velocities
-        w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=range(1, ns + 1)) #base angular velocities
-        if(joy_msg.buttons[3]):
+        rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]],
+                        nodes=range(1, ns + 1))  # com velocities
+        w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]],
+                     nodes=range(1, ns + 1))  # base angular velocities
+        if (joy_msg.buttons[3]):
             Wo.assign(cs.sqrt(1e5))
         else:
             Wo.assign(0.)
@@ -457,10 +426,9 @@ while not rospy.is_shutdown():
         axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
         axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
 
-        rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=range(1, ns+1)) #com velocities
-        w_ref.assign([0, 0, 0], nodes=range(1, ns + 1)) #base angular velocities
+        rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=range(1, ns + 1))  # com velocities
+        w_ref.assign([0, 0, 0], nodes=range(1, ns + 1))  # base angular velocities
         Wo.assign(0.)
-    
 
     if motion == "walking":
         wpg.set("step")
@@ -468,7 +436,6 @@ while not rospy.is_shutdown():
         wpg.set("jump")
     else:
         wpg.set("standing")
-
 
     tic()
     solver.solve()
@@ -485,7 +452,7 @@ while not rospy.is_shutdown():
     for i in range(0, nc):
         viz.publishContactForce(t, solution['f' + str(i)][:, 0], 'c' + str(i))
         viz.publishPointTrj(solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-    viz.SRBDViewer(I, "SRB", t, nc) #TODO: should we use w_R_b * I * w_R_b.T?
+    viz.SRBDViewer(I, "SRB", t, nc)  # TODO: should we use w_R_b * I * w_R_b.T?
     viz.publishPointTrj(solution["r"], t, "SRB", "world")
 
     cc = dict()
@@ -493,7 +460,20 @@ while not rospy.is_shutdown():
     for i in range(0, nc):
         cc[i] = solution["c" + str(i)][:, 0]
         ff[i] = solution["f" + str(i)][:, 0]
-    srbd_0 = kin_dyn.SRBD(m, I, ff, solution["r"][:, 0], solution["rddot"][:, 0], cc, solution["w"][:, 0], solution["wdot"][:, 0])
+
+    #todo: make it generic!
+    input = np.concatenate([solution["cddot0"][:, 0], ff[0],solution["cddot1"][:, 0], ff[1],solution["cddot2"][:, 0], ff[2],
+                           solution["cddot3"][:, 0], ff[3]])
+    state = np.concatenate([solution["r"][:, 0], solution["o"][:, 0],
+                                     solution["c0"][:, 0], solution["c1"][:, 0], solution["c2"][:, 0], solution["c3"][:, 0],
+                                     solution["rdot"][:, 0], solution["w"][:, 0],
+                                     solution["cdot0"][:, 0], solution["cdot1"][:, 0], solution["cdot2"][:, 0],
+                                     solution["cdot3"][:, 0]
+                                     ])
+    rddot0 = RDDOT(input)
+    wdot0 = WDOT(state, input)
+
+    srbd_0 = kin_dyn.SRBD(m, I, ff, solution["r"][:, 0], rddot0, cc, solution["w"][:, 0], wdot0)
     srbd_msg.header.stamp = t
     srbd_msg.wrench.force.x = srbd_0[0]
     srbd_msg.wrench.force.y = srbd_0[1]
@@ -503,22 +483,12 @@ while not rospy.is_shutdown():
     srbd_msg.wrench.torque.z = srbd_0[5]
     srbd_pub.publish(srbd_msg)
 
-
     ci.publish(solution["r"][:, 1], solution["rdot"][:, 1],
                solution["o"][:, 1], solution["w"][:, 1],
                {"left_sole_link": [solution['c' + str(0)][:, 1], solution['c' + str(1)][:, 1]],
-                "right_sole_link": [solution['c' + str(2)][:, 1], solution['c' + str(3)][:, 1]] },
+                "right_sole_link": [solution['c' + str(2)][:, 1], solution['c' + str(3)][:, 1]]},
                {"left_sole_link": [solution['cdot' + str(0)][:, 1], solution['cdot' + str(1)][:, 1]],
                 "right_sole_link": [solution['cdot' + str(2)][:, 1], solution['cdot' + str(3)][:, 1]]},
                t)
 
-
     rate.sleep()
-
-
-
-
-
-
-
-
