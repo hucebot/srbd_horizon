@@ -201,6 +201,7 @@ com = COM(q=joint_init)['com']
 print(f"com: {com}")
 r.setInitialGuess(com)
 r.setBounds(com, com, 0)
+rdot.setBounds([0., 0., 0.], [0., 0., 0.], 0)
 rdot.setInitialGuess([0., 0., 0.])
 
 """
@@ -368,7 +369,7 @@ if SOLVER() == 'gnsqp':
 import ddp
 opts = dict()
 print(prb.getState().getVars())
-opts["initial_state"] = np.concatenate([r.getBounds()[0][0:3,0], o.getBounds()[0][0:3,0], c[0].getBounds()[0][0:3,0], c[1].getBounds()[0][0:3,0], c[2].getBounds()[0][0:3,0],
+opts["initial_state"] = np.concatenate([r.getBounds()[0][0:3,0], o.getBounds()[0][0:4,0], c[0].getBounds()[0][0:3,0], c[1].getBounds()[0][0:3,0], c[2].getBounds()[0][0:3,0],
         c[3].getBounds()[0][0:3,0], rdot.getBounds()[0][0:3, 0], w.getBounds()[0][0:3, 0], cdot[0].getBounds()[0][0:3, 0],
         cdot[1].getBounds()[0][0:3, 0], cdot[2].getBounds()[0][0:3, 0], cdot[3].getBounds()[0][0:3, 0]]) #take init from prev solution
 solver = ddp.DDPSolver(prb, opts=opts)
