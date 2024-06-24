@@ -156,10 +156,10 @@ class DDPSolver(Solver):
     def get_params_value(self, node):
         for var in self.var_container.getVarList(offset=False):
             if node < var.getLowerBounds().shape[1]:
-                self.param_var[var.getName() + "lower"].assign(np.full(var.shape, -1e6)) #var.getLowerBounds()[:,node])
-                self.param_var[var.getName() + "upper"].assign(np.full(var.shape, 1e6)) #var.getUpperBounds()[:,node])
-                #self.param_var[var.getName() + "lower"].assign(np.nan_to_num(var.getLowerBounds()[:,node], posinf=1e6, neginf=-1e6))
-                #self.param_var[var.getName() + "upper"].assign(np.nan_to_num(var.getUpperBounds()[:,node], posinf=1e6, neginf=-1e6))
+                #self.param_var[var.getName() + "lower"].assign(np.full(var.shape, -1e6)) #var.getLowerBounds()[:,node])
+                #self.param_var[var.getName() + "upper"].assign(np.full(var.shape, 1e6)) #var.getUpperBounds()[:,node])
+                self.param_var[var.getName() + "lower"].assign(np.nan_to_num(var.getLowerBounds()[:,node], posinf=1e6, neginf=-1e6))
+                self.param_var[var.getName() + "upper"].assign(np.nan_to_num(var.getUpperBounds()[:,node], posinf=1e6, neginf=-1e6))
 
         param_values_at_node = list()
         for i_params in self.param_var.values():
@@ -170,7 +170,7 @@ class DDPSolver(Solver):
     def get_L(self, node):
         cost = 0
         constraint_weight = 1e6
-        log_parameter = 10.0
+        exp_parameter = 50.0
         for val in self.fun_container.getCost().values():
             if node in val.getNodes():
                 #self.print_cost_info(val)
@@ -190,13 +190,13 @@ class DDPSolver(Solver):
             if node in constr.getNodes():
                 vars = constr.getVariables()
                 pars = constr.getParameters()
-                simf = (1/log_parameter) * cs.sum1(- cs.log(- constr.getFunction()(*vars, *pars)))
+                simf = cs.sum1(exp_parameter * cs.exp(constr.getFunction()(*vars, *pars)))
                 cost = cost + simf
         # add coincident bounds as equality constraints, and different bounds as inequality constraints
         for var in self.var_container.getVarList(offset=False):
-            simf = (1/log_parameter) * cs.sum1(- cs.log(- (var - self.param_var[var.getName()+"upper"])))
+            simf = cs.sum1(cs.exp(exp_parameter * (var - self.param_var[var.getName()+"upper"])))
             cost = cost + simf
-            simf = (1/log_parameter) * cs.sum1(- cs.log(- (self.param_var[var.getName()+"lower"] - var)))
+            simf = cs.sum1(cs.exp(exp_parameter * (self.param_var[var.getName()+"lower"] - var)))
             cost = cost + simf
         return cs.Function("L"+str(node), 
                            [cs.vertcat(self.state_var), 
