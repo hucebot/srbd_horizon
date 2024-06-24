@@ -146,9 +146,11 @@ prb.setDynamics(xdot)
 prb.setDt(T/ns)
 transcription_method = rospy.get_param("transcription_method", 'multiple_shooting')  # can choose between 'multiple_shooting' and 'direct_collocation'
 transcription_opts = dict(integrator='RK2') # integrator used by the multiple_shooting
-if transcription_method == 'direct_collocation':
-    transcription_opts = dict()
-th = Transcriptor.make_method(transcription_method, prb, opts=transcription_opts)
+
+#todo: ipopt
+#if transcription_method == 'direct_collocation':
+#    transcription_opts = dict()
+#th = Transcriptor.make_method(transcription_method, prb, opts=transcription_opts)
 
 
 """

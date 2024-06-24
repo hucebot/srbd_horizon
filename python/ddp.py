@@ -29,6 +29,18 @@ class DDPSolver(Solver):
         self.var_container = self.prb.var_container
         self.fun_container = self.prb.function_container
 
+        self.equality_constraints = []
+        self.inequality_constraints = []
+        for constr in self.fun_container.getCnstr().values():
+            if self.is_equality_constraint(constr):
+                self.equality_constraints.append(constr)
+            else:
+                self.inequality_constraints.append(constr)
+
+        print(self.equality_constraints)
+        print(self.inequality_constraints)
+        exit()
+
         self.state_var = prb.getState().getVars()
         self.state_size = self.state_var.size()[0]
         self.input_var = prb.getInput().getVars()
@@ -70,6 +82,11 @@ class DDPSolver(Solver):
         self.var_solution['u_opt'] = u
 
         return self.ddp_solver.is_converged()
+
+    def is_equality_constraint(self, constr):
+        upper = np.array(constr.getUpperBounds())
+        lower = np.array(constr.getLowerBounds())
+        return np.norm(upper-lower) <= 1e-6
 
     def set_u_warmstart(self, u):
         self.ddp_solver.set_u_warmstart(u)
