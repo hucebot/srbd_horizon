@@ -152,12 +152,20 @@ class DDPSolver(Solver):
                 pars = val.getParameters()
                 simf = cs.sumsqr(val.getFunction()(*vars, *pars)) #note: we assume createResiduals functions!
                 cost = cost + simf
+        # equality constraints included with a large weight
         for constr in self.equality_constraints:
             if node in constr.getNodes():
                 vars = constr.getVariables()
                 pars = constr.getParameters()
                 simf = cs.sumsqr(constr.getFunction()(*vars, *pars))
                 cost = cost + constraint_weight * simf
+        # inequality constraints through barrier functions
+        for constr in self.inequality_constraints:
+            if node in constr.getNodes():
+                vars = constr.getVariables()
+                pars = constr.getParameters()
+                simf = cs.sum1(- cs.log(- constr.getFunction()(*vars, *pars)))
+                cost = cost + simf
         return cs.Function("L"+str(node), [cs.vertcat(self.state_var), cs.vertcat(self.input_var), cs.vcat(list(self.param_var.values()))], [cost])
 
     def get_L_term(self, node):
