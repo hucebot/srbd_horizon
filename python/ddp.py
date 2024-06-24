@@ -1,6 +1,7 @@
 import pyddp
 from horizon.solvers import Solver
 from horizon.problem import Problem
+from horizon.transcriptions import integrators
 from typing import Dict
 import casadi as cs
 import numpy as np
@@ -34,6 +35,13 @@ class DDPSolver(Solver):
         self.input_size = self.input_var.size()[0]
         self.param_var = prb.getParameters()
 
+        #define discrete dynamics
+        self.dae = dict()
+        self.dae["x"] = cs.vertcat(self.state_var)
+        self.dae["ode"] = self.prb.getDynamics()
+        self.dae["p"] = cs.vertcat(self.input_var)
+        self.dae["quad"] = 0.
+
         self.L_list = []
         self.f_list = []
         for n in range(0, prb.nodes-1):
@@ -50,10 +58,6 @@ class DDPSolver(Solver):
                                           max_iters=self.max_iters, alpha_0=self.alpha_0,
                                           alpha_converge_threshold=self.alpha_converge_threshold,
                                           line_search_decrease_factor=self.line_search_decrease_factor)
-        initial_state = np.zeros(self.state_size)
-        if "initial_state" in self.opts:
-            initial_state = self.opts["initial_state"]
-        self.ddp_solver.set_initial_state(initial_state)
 
     def solve(self) -> bool:
         # 1. update parameters
@@ -64,10 +68,17 @@ class DDPSolver(Solver):
         self.var_solution = self._createVarSolDict(x, u)
         self.var_solution['x_opt'] = x
         self.var_solution['u_opt'] = u
+
         return self.ddp_solver.is_converged()
+
+    def set_u_warmstart(self, u):
+        self.ddp_solver.set_u_warmstart(u)
 
     def getSolutionDict(self):
         return self.var_solution
+
+    def setInitialState(self, x0):
+        self.ddp_solver.set_initial_state(x0)
 
     def _createVarSolDict(self, x, u):
         #print(f"state_size: {self.state_size}")
@@ -140,4 +151,5 @@ class DDPSolver(Solver):
                                              cs.vcat(list(self.param_var.values()))], [cost])
 
     def get_f(self, node):
-        return cs.Function("f" + str(node), [cs.vertcat(self.state_var), cs.vertcat(self.input_var)], [self.prb.getDynamics()])
+        EULER = integrators.EULER(self.dae)
+        return cs.Function("f" + str(node), [cs.vertcat(self.state_var), cs.vertcat(self.input_var)], [EULER(cs.vertcat(self.state_var), cs.vertcat(self.input_var), self.prb.getDt())[0]])

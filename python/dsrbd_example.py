@@ -150,6 +150,7 @@ if transcription_method == 'direct_collocation':
     transcription_opts = dict()
 th = Transcriptor.make_method(transcription_method, prb, opts=transcription_opts)
 
+
 """
 foot_frames parameters are used to retrieve initial position of the contacts given the initial pose of the robot.
 note: the order of the contacts state/control variable is the order in which these contacts are set in the param server 
@@ -334,6 +335,9 @@ solver_offline = solver.Solver.make_solver(SOLVER(), prb, i_opts)
 solver_offline.solve()
 solution = solver_offline.getSolutionDict()
 
+
+
+
 """
 Dictionary to store variables used for warm-start
 """
@@ -368,11 +372,9 @@ if SOLVER() == 'gnsqp':
 #solver = solver.Solver.make_solver(SOLVER(), prb, opts)
 import ddp
 opts = dict()
-print(prb.getState().getVars())
-opts["initial_state"] = np.concatenate([r.getBounds()[0][0:3,0], o.getBounds()[0][0:4,0], c[0].getBounds()[0][0:3,0], c[1].getBounds()[0][0:3,0], c[2].getBounds()[0][0:3,0],
-        c[3].getBounds()[0][0:3,0], rdot.getBounds()[0][0:3, 0], w.getBounds()[0][0:3, 0], cdot[0].getBounds()[0][0:3, 0],
-        cdot[1].getBounds()[0][0:3, 0], cdot[2].getBounds()[0][0:3, 0], cdot[3].getBounds()[0][0:3, 0]]) #take init from prev solution
+opts["max_iters"] = 1
 solver = ddp.DDPSolver(prb, opts=opts)
+solver.set_u_warmstart(solution["u_opt"])
 
 # solver.set_iteration_callback()
 
@@ -396,6 +398,13 @@ while not rospy.is_shutdown():
     for i in range(0, nc):
         c[i].setBounds(solution['c' + str(i)][:, 1], solution['c' + str(i)][:, 1], 0)
         cdot[i].setBounds(solution['cdot' + str(i)][:, 1], solution['cdot' + str(i)][:, 1], 0)
+
+    solver.setInitialState(np.concatenate(
+        [r.getBounds()[0][0:3, 0], o.getBounds()[0][0:4, 0], c[0].getBounds()[0][0:3, 0], c[1].getBounds()[0][0:3, 0],
+         c[2].getBounds()[0][0:3, 0],
+         c[3].getBounds()[0][0:3, 0], rdot.getBounds()[0][0:3, 0], w.getBounds()[0][0:3, 0],
+         cdot[0].getBounds()[0][0:3, 0],
+         cdot[1].getBounds()[0][0:3, 0], cdot[2].getBounds()[0][0:3, 0], cdot[3].getBounds()[0][0:3, 0]]))
 
     motion = "standing"
     if joy_msg is not None:
@@ -440,6 +449,11 @@ while not rospy.is_shutdown():
 
     tic()
     solver.solve()
+    #print("r: ", solution["r"])
+    #print("rdot: ", solution["rdot"])
+    #print("w: ", solution["w"])
+    #exit()
+
 
     solution_time_pub.publish(toc())
     solution = solver.getSolutionDict()
