@@ -34,12 +34,10 @@ class DDPSolver(Solver):
         for constr in self.fun_container.getCnstr().values():
             if self.is_equality_constraint(constr):
                 self.equality_constraints.append(constr)
+                print("Equality constraint", constr.getName())
             else:
                 self.inequality_constraints.append(constr)
-
-        print(self.equality_constraints)
-        print(self.inequality_constraints)
-        exit()
+                print("Inequality constraint", constr.getName())
 
         self.state_var = prb.getState().getVars()
         self.state_size = self.state_var.size()[0]
@@ -86,7 +84,7 @@ class DDPSolver(Solver):
     def is_equality_constraint(self, constr):
         upper = np.array(constr.getUpperBounds())
         lower = np.array(constr.getLowerBounds())
-        return np.norm(upper-lower) <= 1e-6
+        return np.linalg.norm(upper-lower) <= 1e-6
 
     def set_u_warmstart(self, u):
         self.ddp_solver.set_u_warmstart(u)
@@ -146,6 +144,7 @@ class DDPSolver(Solver):
 
     def get_L(self, node):
         cost = 0
+        constraint_weight = 1e6
         for val in self.fun_container.getCost().values():
             if node in val.getNodes():
                 #self.print_cost_info(val)
@@ -153,6 +152,12 @@ class DDPSolver(Solver):
                 pars = val.getParameters()
                 simf = cs.sumsqr(val.getFunction()(*vars, *pars)) #note: we assume createResiduals functions!
                 cost = cost + simf
+        for constr in self.equality_constraints:
+            if node in constr.getNodes():
+                vars = constr.getVariables()
+                pars = constr.getParameters()
+                simf = cs.sumsqr(constr.getFunction()(*vars, *pars))
+                cost = cost + constraint_weight * simf
         return cs.Function("L"+str(node), [cs.vertcat(self.state_var), cs.vertcat(self.input_var), cs.vcat(list(self.param_var.values()))], [cost])
 
     def get_L_term(self, node):
