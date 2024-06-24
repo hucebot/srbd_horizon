@@ -2,6 +2,7 @@ import pyddp
 from horizon.solvers import Solver
 from horizon.problem import Problem
 from horizon.transcriptions import integrators
+from horizon.variables import Parameter
 from typing import Dict
 import casadi as cs
 import numpy as np
@@ -29,21 +30,38 @@ class DDPSolver(Solver):
         self.var_container = self.prb.var_container
         self.fun_container = self.prb.function_container
 
+        # get constraints
         self.equality_constraints = []
         self.inequality_constraints = []
         for constr in self.fun_container.getCnstr().values():
             if self.is_equality_constraint(constr):
                 self.equality_constraints.append(constr)
-                print("Equality constraint", constr.getName())
             else:
                 self.inequality_constraints.append(constr)
-                print("Inequality constraint", constr.getName())
 
+        # recover problem size
         self.state_var = prb.getState().getVars()
         self.state_size = self.state_var.size()[0]
         self.input_var = prb.getInput().getVars()
         self.input_size = self.input_var.size()[0]
         self.param_var = prb.getParameters()
+
+        # prepare variables bound parameters
+        nodes_array = np.zeros(prb.nodes).astype(int)
+        nodes_array[None] = 1 #wtf?
+        for var in self.var_container.getVarList(offset=False):
+            par_lower = Parameter(var.getName() + "lower",
+                                  var.shape[0],
+                                  nodes_array,
+                                  casadi_type=cs.MX,
+                                  abstract_casadi_type=cs.SX)
+            par_upper = Parameter(var.getName() + "upper",
+                                  var.shape[0],
+                                  nodes_array,
+                                  casadi_type=cs.MX,
+                                  abstract_casadi_type=cs.SX)
+            self.param_var[var.getName() + "lower"] = par_lower
+            self.param_var[var.getName() + "upper"] = par_upper
 
         #define discrete dynamics
         self.dae = dict()
@@ -136,6 +154,13 @@ class DDPSolver(Solver):
         print(f"        out: {cost.getFunction().n_out()}")
 
     def get_params_value(self, node):
+        for var in self.var_container.getVarList(offset=False):
+            if node < var.getLowerBounds().shape[1]:
+                self.param_var[var.getName() + "lower"].assign(np.full(var.shape, -1e6)) #var.getLowerBounds()[:,node])
+                self.param_var[var.getName() + "upper"].assign(np.full(var.shape, 1e6)) #var.getUpperBounds()[:,node])
+                #self.param_var[var.getName() + "lower"].assign(np.nan_to_num(var.getLowerBounds()[:,node], posinf=1e6, neginf=-1e6))
+                #self.param_var[var.getName() + "upper"].assign(np.nan_to_num(var.getUpperBounds()[:,node], posinf=1e6, neginf=-1e6))
+
         param_values_at_node = list()
         for i_params in self.param_var.values():
             for i_param in i_params.getValues():
@@ -145,6 +170,7 @@ class DDPSolver(Solver):
     def get_L(self, node):
         cost = 0
         constraint_weight = 1e6
+        log_parameter = 10.0
         for val in self.fun_container.getCost().values():
             if node in val.getNodes():
                 #self.print_cost_info(val)
@@ -164,9 +190,19 @@ class DDPSolver(Solver):
             if node in constr.getNodes():
                 vars = constr.getVariables()
                 pars = constr.getParameters()
-                simf = cs.sum1(- cs.log(- constr.getFunction()(*vars, *pars)))
+                simf = (1/log_parameter) * cs.sum1(- cs.log(- constr.getFunction()(*vars, *pars)))
                 cost = cost + simf
-        return cs.Function("L"+str(node), [cs.vertcat(self.state_var), cs.vertcat(self.input_var), cs.vcat(list(self.param_var.values()))], [cost])
+        # add coincident bounds as equality constraints, and different bounds as inequality constraints
+        for var in self.var_container.getVarList(offset=False):
+            simf = (1/log_parameter) * cs.sum1(- cs.log(- (var - self.param_var[var.getName()+"upper"])))
+            cost = cost + simf
+            simf = (1/log_parameter) * cs.sum1(- cs.log(- (self.param_var[var.getName()+"lower"] - var)))
+            cost = cost + simf
+        return cs.Function("L"+str(node), 
+                           [cs.vertcat(self.state_var), 
+                            cs.vertcat(self.input_var), 
+                            cs.vcat(list(self.param_var.values()))], 
+                           [cost])
 
     def get_L_term(self, node):
         cost = 0
