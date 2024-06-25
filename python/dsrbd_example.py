@@ -35,10 +35,7 @@ def joy_cb(msg):
 horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
 time.sleep(3.)
 
-"""
-Creates HORIZON problem. 
-These parameters can not be tuned at the moment.
-"""
+# creates HORIZON problem, these parameters can not be tuned at the moment
 ns = 20
 prb = problem.Problem(ns, casadi_type=cs.SX)
 T = 1.
@@ -51,20 +48,19 @@ if urdf == "":
 
 kindyn = cas_kin_dyn.CasadiKinDyn(urdf)
 
-"""
-Creates problem STATE variables
-"""
-""" CoM Position """
+# creates problem STATE variables
+
+# CoM Position
 r = prb.createStateVariable("r", 3)
-""" Base orientation (quaternion) """
+# Base orientation (quaternion)
 o = prb.createStateVariable("o", 4)
 
-""" Variable to collect all position states """
+# Variable to collect all position states
 q = variables.Aggregate()
 q.addVariable(r)
 q.addVariable(o)
 
-""" Contacts position """
+# Contacts position
 contact_model = rospy.get_param("contact_model", 4)
 print(f"contact_model: {contact_model}")
 
@@ -79,31 +75,30 @@ for i in range(0, nc):
     c[i] = prb.createStateVariable("c" + str(i), 3) # Contact i position
     q.addVariable(c[i])
 
-""" CoM Velocity and paramter to handle references """
+# CoM Velocity and paramter to handle references
 rdot = prb.createStateVariable("rdot", 3) # CoM vel
 rdot_ref = prb.createParameter('rdot_ref', 3)
 rdot_ref.assign([0., 0., 0.], nodes=range(1, ns+1))
 
-""" Base angular Velocity and parameter to handle references """
+# base angular Velocity and parameter to handle references
 w = prb.createStateVariable("w", 3) # base vel
 w_ref = prb.createParameter('w_ref', 3)
 w_ref.assign([0., 0., 0.], nodes=range(1, ns+1))
 
-""" Variable to collect all velocity states """
+# variable to collect all velocity states
 qdot = variables.Aggregate()
 qdot.addVariable(rdot)
 qdot.addVariable(w)
 
-""" Contacts velocity """
+# contacts velocity
 cdot = dict()
 for i in range(0, nc):
     cdot[i] = prb.createStateVariable("cdot" + str(i), 3)  # Contact i vel
     qdot.addVariable(cdot[i])
 
-"""
-Contacts acceleration and forces
-"""
-""" Variable to collect all acceleration controls """
+# contacts acceleration and forces
+
+# variable to collect all acceleration controls
 qddot = variables.Aggregate()
 
 cddot = dict()
@@ -112,11 +107,10 @@ for i in range(0, nc):
     cddot[i] = prb.createInputVariable("cddot" + str(i), 3) # Contact i acc
     f[i] = prb.createInputVariable("f" + str(i), 3) # Contact i forces
 
-"""
-Formulate discrete time dynamics using multiple_shooting and RK2 integrator
-joint_init is used to initialize the urdf model and retrieve information such as: CoM, Inertia, atc... 
-at the nominal configuration given by joint_init
-"""
+# Formulate discrete time dynamics using multiple_shooting and RK2 integrator
+# joint_init is used to initialize the urdf model and retrieve information such as: CoM, Inertia, atc... 
+# at the nominal configuration given by joint_init
+
 joint_init = rospy.get_param("joint_init")
 if len(joint_init) == 0:
     print("joint_init parameter is mandatory, exiting...")
@@ -154,10 +148,9 @@ transcription_opts = dict(integrator='RK2') # integrator used by the multiple_sh
 #th = Transcriptor.make_method(transcription_method, prb, opts=transcription_opts)
 
 
-"""
-foot_frames parameters are used to retrieve initial position of the contacts given the initial pose of the robot.
-note: the order of the contacts state/control variable is the order in which these contacts are set in the param server 
-"""
+# foot_frames parameters are used to retrieve initial position of the contacts given the initial pose of the robot.
+# note: the order of the contacts state/control variable is the order in which these contacts are set in the param server 
+
 foot_frames = rospy.get_param("foot_frames")
 if len(foot_frames) == 0:
     print("foot_frames parameter is mandatory, exiting...")
@@ -177,29 +170,22 @@ for frame in foot_frames:
     FK = kindyn.fk(frame)
     p = FK(q=joint_init)['ee_pos']
     print(f"{frame}: {p}")
-    """
-    Storing initial foot_position and setting as initial bound
-    """
+    
+    # storing initial foot_position and setting as initial bound
     initial_foot_position[i] = p
     c[i].setInitialGuess(p)
     c[i].setBounds(p, p, 0)
 
-    """
-    Contacts initial velocity is 0
-    """
+    # contacts initial velocity is 0
     cdot[i].setInitialGuess([0., 0., 0.])
     cdot[i].setBounds([0., 0., 0.], [0., 0., 0.])  # with 0 velocity
 
-    """
-    Forces are between -max_max_contact_force and max_max_contact_force (unilaterality is added later)
-    """
+    # forces are between -max_max_contact_force and max_max_contact_force (unilaterality is added later)
     f[i].setBounds([-max_contact_force, -max_contact_force, -max_contact_force], [max_contact_force, max_contact_force, max_contact_force])
 
     i = i + 1
 
-"""
-Initialize com state and com velocity
-"""
+# initialize com state and com velocity
 COM = kindyn.centerOfMass()
 com = COM(q=joint_init)['com']
 print(f"com: {com}")
@@ -208,61 +194,43 @@ r.setBounds(com, com, 0)
 rdot.setBounds([0., 0., 0.], [0., 0., 0.], 0)
 rdot.setInitialGuess([0., 0., 0.])
 
-"""
-Initialize base state and base angular velocity
-"""
+# initialize base state and base angular velocity
 print(f"base orientation: {joint_init[3:7]}")
 o.setInitialGuess(joint_init[3:7])
 o.setBounds(joint_init[3:7], joint_init[3:7], 0)
 w.setInitialGuess([0., 0., 0.])
 w.setBounds([0., 0., 0.], [0., 0., 0.], 0)
 
-"""
-Set up some therms of the COST FUNCTION
-"""
-"""
-rz_tracking is used to keep the com height around the initial value
-"""
+# set up some therms of the COST FUNCTION
+# rz_tracking is used to keep the com height around the initial value
 rz_tracking_gain = rospy.get_param("rz_tracking_gain", 2e3)
 print(f"rz_tracking_gain: {rz_tracking_gain}")
 prb.createResidual("rz_tracking", np.sqrt(rz_tracking_gain) *  (r[2] - com[2]), nodes=range(1, ns+1))
 
-"""
-o_tracking is used to keep the base orientation at identity, its gain is initialize at 0 and set to non-0 only when a button is pressed
-"""
+# o_tracking is used to keep the base orientation at identity, its gain is initialize at 0 and set to non-0 only when a button is pressed
 Wo = prb.createParameter('Wo', 1)
 Wo.assign(0.)
 prb.createResidual("o_tracking", Wo * (o - joint_init[3:7]), nodes=range(1, ns+1))
 
-"""
-rdot_tracking is used to track a desired velocity of the CoM
-"""
+# rdot_tracking is used to track a desired velocity of the CoM
 rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 1e4)
 print(f"rdot_tracking_gain: {rdot_tracking_gain}")
 prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns+1))
 
-"""
-w_tracking is used to track a desired angular velocity of the base
-"""
+# w_tracking is used to track a desired angular velocity of the base
 w_tracking_gain = rospy.get_param("w_tracking_gain", 1e4)
 print(f"w_tracking_gain: {w_tracking_gain}")
 prb.createResidual("w_tracking", np.sqrt(w_tracking_gain) * (w - w_ref), nodes=range(1, ns+1))
 
-"""
-min_qddot is to minimize the acceleration control effort
-"""
+# min_qddot is to minimize the acceleration control effort
 min_qddot_gain = rospy.get_param("min_qddot_gain", 1e0)
 print(f"min_qddot_gain: {min_qddot_gain}")
 prb.createResidual("min_qddot", np.sqrt(min_qddot_gain) * (qddot.getVars()), nodes=list(range(0, ns)))
 
-"""
-Set up som CONSTRAINTS
-"""
-"""
-These are the relative distance in y between the feet. Initial configuration of contacts is taken as minimum distance in Y! 
-TODO: when feet will rotates, also these constraint has to rotate!
-TODO: what happen for only 4 contacts???
-"""
+# set up som CONSTRAINTS
+# these are the relative distance in y between the feet. Initial configuration of contacts is taken as minimum distance in Y! 
+# TODO: when feet will rotates, also these constraint has to rotate!
+# TODO: what happen for only 4 contacts???
 max_clearance_x = rospy.get_param("max_clearance_x", 0.5)
 print(f"max_clearance_x: {max_clearance_x}")
 max_clearance_y = rospy.get_param("max_clearance_y", 0.5)
@@ -287,22 +255,16 @@ min_f_gain = rospy.get_param("min_f_gain", 1e-2)
 print(f"min_f_gain: {min_f_gain}")
 c_ref = dict()
 for i in range(0, nc):
-    """
-    min_f try to minimze the contact forces (can be seen as distribute equally the contact forces)
-    """
+    # min_f try to minimze the contact forces (can be seen as distribute equally the contact forces)
     prb.createResidual("min_f" + str(i), np.sqrt(min_f_gain) * f[i], nodes=list(range(0, ns)))
 
-    """
-    cz_tracking is used to track the z reference for the feet: notice that is a constraint
-    """
+    # cz_tracking is used to track the z reference for the feet: notice that is a constraint
     c_ref[i] = prb.createParameter("c_ref" + str(i), 1)
     c_ref[i].assign(initial_foot_position[i][2], nodes=range(0, ns+1))
     prb.createConstraint("cz_tracking" + str(i), c[i][2] - c_ref[i])
 
-"""
-Friction cones and force unilaterality constraint
-TODO: for now flat terrain is assumed (StanceR needs tio be used more or less everywhere for contacts)
-"""
+# friction cones and force unilaterality constraint
+# TODO: for now flat terrain is assumed (StanceR needs tio be used more or less everywhere for contacts)
 mu = rospy.get_param("friction_cone_coefficient", 0.8)
 print(f"mu: {mu}")
 for i, fi in f.items():
@@ -311,20 +273,16 @@ for i, fi in f.items():
     fc, fc_lb, fc_ub = kin_dyn.linearized_friction_cone(fi, mu, StanceR)
     prb.createIntermediateConstraint(f"f{i}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
 
-"""
-This constraint is used to keep points which belong to the same contacts together
-note: needs as well to be rotated in future to consider w x p
-TODO: use also number_of_legs
-"""
+# this constraint is used to keep points which belong to the same contacts together
+# note: needs as well to be rotated in future to consider w x p
+# TODO: use also number_of_legs
 if contact_model > 1:
     for i in range(1, contact_model):
         prb.createConstraint("relative_vel_left_" + str(i), cdot[0][0:2] - cdot[i][0:2])
     for i in range(contact_model + 1, 2 * contact_model):
         prb.createConstraint("relative_vel_right_" + str(i), cdot[contact_model][0:2] - cdot[i][0:2])
 
-"""
-Create solver
-"""
+# create solver
 max_iteration = rospy.get_param("max_iteration", 20)
 print(f"max_iteration: {max_iteration}")
 
@@ -339,11 +297,7 @@ solver_offline.solve()
 solution = solver_offline.getSolutionDict()
 state = solution["x_opt"][:,0]
 
-
-
-"""
-Dictionary to store variables used for warm-start
-"""
+# dictionary to store variables used for warm-start
 variables_dict = {"r": r, "rdot": rdot,
                   "o": o, "w": w}
 for i in range(0, nc):
@@ -365,9 +319,7 @@ solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
 srbd_pub = rospy.Publisher("srbd_constraint", WrenchStamped, queue_size=10)
 srbd_msg = WrenchStamped()
 
-"""
-online_solver
-"""
+# online_solver
 opts = solver_options.ipopt_online_solver_options(max_iteration)
 if SOLVER() == 'gnsqp':
     opts = solver_options.sqp_online_solver_options(max_iterations=1)
@@ -389,16 +341,12 @@ dae["p"] = cs.vertcat(prb.getInput().getVars())
 dae["quad"] = 0.
 simulation_euler_integrator = integrators.EULER(dae)
 
-"""
-Walking patter generator and scheduler
-"""
+# Walking patter generator and scheduler
 wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, ns, number_of_legs=number_of_legs,
                       contact_model=contact_model, max_force=max_contact_force, max_velocity=max_contact_velocity)
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 while not rospy.is_shutdown():
-    """
-    Automatically set initial guess from solution to variables in variables_dict
-    """
+    # automatically set initial guess from solution to variables in variables_dict
     mat_storer.setInitialGuess(variables_dict, solution)
     # open loop
     r.setBounds(solution['r'][:, 1], solution['r'][:, 1], 0)
