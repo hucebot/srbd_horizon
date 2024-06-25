@@ -47,21 +47,21 @@ class DDPSolver(Solver):
         self.param_var = prb.getParameters()
 
         # prepare variables bound parameters
-        nodes_array = np.zeros(prb.nodes).astype(int)
-        nodes_array[None] = 1 #wtf?
-        for var in self.var_container.getVarList(offset=False):
-            par_lower = Parameter(var.getName() + "lower",
-                                  var.shape[0],
-                                  nodes_array,
-                                  casadi_type=cs.MX,
-                                  abstract_casadi_type=cs.SX)
-            par_upper = Parameter(var.getName() + "upper",
-                                  var.shape[0],
-                                  nodes_array,
-                                  casadi_type=cs.MX,
-                                  abstract_casadi_type=cs.SX)
-            self.param_var[var.getName() + "lower"] = par_lower
-            self.param_var[var.getName() + "upper"] = par_upper
+        # nodes_array = np.zeros(prb.nodes).astype(int)
+        # nodes_array[None] = 1 #wtf?
+        # for var in self.var_container.getVarList(offset=False):
+        #     par_lower = Parameter(var.getName() + "lower",
+        #                           var.shape[0],
+        #                           nodes_array,
+        #                           casadi_type=cs.MX,
+        #                           abstract_casadi_type=cs.SX)
+        #     par_upper = Parameter(var.getName() + "upper",
+        #                           var.shape[0],
+        #                           nodes_array,
+        #                           casadi_type=cs.MX,
+        #                           abstract_casadi_type=cs.SX)
+        #     self.param_var[var.getName() + "lower"] = par_lower
+        #     self.param_var[var.getName() + "upper"] = par_upper
 
         #define discrete dynamics
         self.dae = dict()
@@ -154,12 +154,12 @@ class DDPSolver(Solver):
         print(f"        out: {cost.getFunction().n_out()}")
 
     def get_params_value(self, node):
-        for var in self.var_container.getVarList(offset=False):
-            if node < var.getLowerBounds().shape[1]:
-                #self.param_var[var.getName() + "lower"].assign(np.full(var.shape, -1e6)) #var.getLowerBounds()[:,node])
-                #self.param_var[var.getName() + "upper"].assign(np.full(var.shape, 1e6)) #var.getUpperBounds()[:,node])
-                self.param_var[var.getName() + "lower"].assign(np.nan_to_num(var.getLowerBounds()[:,node], posinf=1e9, neginf=-1e9))
-                self.param_var[var.getName() + "upper"].assign(np.nan_to_num(var.getUpperBounds()[:,node], posinf=1e9, neginf=-1e9))
+        #for var in self.var_container.getVarList(offset=False):
+            # if node < var.getLowerBounds().shape[1]:
+            #     #self.param_var[var.getName() + "lower"].assign(np.full(var.shape, -1e6)) #var.getLowerBounds()[:,node])
+            #     #self.param_var[var.getName() + "upper"].assign(np.full(var.shape, 1e6)) #var.getUpperBounds()[:,node])
+            #     self.param_var[var.getName() + "lower"].assign(np.nan_to_num(var.getLowerBounds()[:,node], posinf=1e9, neginf=-1e9))
+            #     self.param_var[var.getName() + "upper"].assign(np.nan_to_num(var.getUpperBounds()[:,node], posinf=1e9, neginf=-1e9))
 
         param_values_at_node = list()
         for i_params in self.param_var.values():
@@ -186,18 +186,18 @@ class DDPSolver(Solver):
                 simf = cs.sumsqr(constr.getFunction()(*vars, *pars))
                 cost = cost + constraint_weight * simf
         # inequality constraints through barrier functions
-        for constr in self.inequality_constraints:
-            if node in constr.getNodes():
-                vars = constr.getVariables()
-                pars = constr.getParameters()
-                simf = cs.sum1(exp_parameter * cs.exp(constr.getFunction()(*vars, *pars)))
-                cost = cost + simf
+        # for constr in self.inequality_constraints:
+        #     if node in constr.getNodes():
+        #         vars = constr.getVariables()
+        #         pars = constr.getParameters()
+        #         simf = cs.sum1(exp_parameter * cs.exp(constr.getFunction()(*vars, *pars)))
+        #         cost = cost + simf
         # add coincident bounds as equality constraints, and different bounds as inequality constraints
-        for var in self.var_container.getVarList(offset=False):
-            simf = cs.sum1(cs.exp(exp_parameter * (var - self.param_var[var.getName()+"upper"])))
-            cost = cost + simf
-            simf = cs.sum1(cs.exp(exp_parameter * (self.param_var[var.getName()+"lower"] - var)))
-            cost = cost + simf
+        # for var in self.var_container.getVarList(offset=False):
+        #     simf = cs.sum1(cs.exp(exp_parameter * (var - self.param_var[var.getName()+"upper"])))
+        #     cost = cost + simf
+        #     simf = cs.sum1(cs.exp(exp_parameter * (self.param_var[var.getName()+"lower"] - var)))
+        #     cost = cost + simf
         return cs.Function("L"+str(node), 
                            [cs.vertcat(self.state_var), 
                             cs.vertcat(self.input_var), 

@@ -254,6 +254,7 @@ relative_pos_x_3_6 = prb.createResidual("relative_pos_x_3_6", 1e2 * (-c[fpi[1]][
 min_f_gain = rospy.get_param("min_f_gain", 1e-2)
 print(f"min_f_gain: {min_f_gain}")
 c_ref = dict()
+cdot_switch = dict()
 for i in range(0, nc):
     # min_f try to minimze the contact forces (can be seen as distribute equally the contact forces)
     prb.createResidual("min_f" + str(i), np.sqrt(min_f_gain) * f[i], nodes=list(range(0, ns)))
@@ -262,6 +263,9 @@ for i in range(0, nc):
     c_ref[i] = prb.createParameter("c_ref" + str(i), 1)
     c_ref[i].assign(initial_foot_position[i][2], nodes=range(0, ns+1))
     prb.createConstraint("cz_tracking" + str(i), c[i][2] - c_ref[i])
+    cdot_switch[i] = prb.createParameter("cdot_switch" + str(i), 1)
+    cdot_switch[i].assign(1., nodes=range(0, ns + 1))
+    prb.createConstraint("cdotxy_tracking" + str(i), cdot_switch[i] * cdot[i][0:2])
 
 # friction cones and force unilaterality constraint
 # TODO: for now flat terrain is assumed (StanceR needs tio be used more or less everywhere for contacts)
@@ -271,7 +275,9 @@ for i, fi in f.items():
     # FRICTION CONE
     StanceR = np.identity(3, dtype=float)  # environment rotation wrt inertial frame
     fc, fc_lb, fc_ub = kin_dyn.linearized_friction_cone(fi, mu, StanceR)
-    prb.createIntermediateConstraint(f"f{i}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
+    #prb.createIntermediateConstraint(f"f{i}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
+
+    prb.createIntermediateConstraint(f"f{i}_active", (1.-cdot_switch[i])*fi)
 
 # this constraint is used to keep points which belong to the same contacts together
 # note: needs as well to be rotated in future to consider w x p
@@ -328,6 +334,7 @@ if SOLVER() == 'gnsqp':
 import ddp
 opts = dict()
 opts["max_iters"] = 20
+opts["alpha_converge_threshold"] = 1e-3
 solver = ddp.DDPSolver(prb, opts=opts)
 solver.set_u_warmstart(solution["u_opt"])
 
@@ -342,7 +349,7 @@ dae["quad"] = 0.
 simulation_euler_integrator = integrators.EULER(dae)
 
 # Walking patter generator and scheduler
-wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, ns, number_of_legs=number_of_legs,
+wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, cdot_switch, ns, number_of_legs=number_of_legs,
                       contact_model=contact_model, max_force=max_contact_force, max_velocity=max_contact_velocity)
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 while not rospy.is_shutdown():
@@ -364,7 +371,7 @@ while not rospy.is_shutdown():
     if motion == "standing":
         alphaX, alphaY = 0.1, 0.1
     else:
-        alphaX, alphaY = 0.4, 0.3
+        alphaX, alphaY = 0.1, 0.1
 
     if joy_msg is not None:
         rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]],
@@ -417,6 +424,8 @@ while not rospy.is_shutdown():
     # simulation integration
     input = solution["u_opt"][:, 0]
     state = simulation_euler_integrator(state, input, prb.getDt())[0]
+    print(f"state:", solution["x_opt"])
+    print(f"input:",  solution["u_opt"])
     rddot0 = RDDOT(input)
     wdot0 = WDOT(state, input)
 

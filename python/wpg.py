@@ -1,11 +1,12 @@
 import numpy as np
 
 class steps_phase:
-    def __init__(self, f, c, cdot, c_init_z, c_ref, nodes, number_of_legs, contact_model, max_force, max_velocity):
+    def __init__(self, f, c, cdot, c_init_z, c_ref, cdot_switch, nodes, number_of_legs, contact_model, max_force, max_velocity):
         self.f = f
         self.c = c
         self.cdot = cdot
         self.c_ref = c_ref
+        self.cdot_switch = cdot_switch
 
         self.number_of_legs = number_of_legs
         self.contact_model = contact_model
@@ -48,49 +49,61 @@ class steps_phase:
         #left step cycle
         self.l_cycle = []
         self.l_cdot_bounds = []
+        self.l_cdot_switch = []
         self.l_f_bounds = []
         for k in range(0,2): # 2 nodes down
             self.l_cycle.append(c_init_z)
             self.l_cdot_bounds.append([0., 0., 0.])
+            self.l_cdot_switch.append(1.)
             self.l_f_bounds.append([max_force, max_force, max_force])
         for k in range(0, 8):  # 8 nodes step
             self.l_cycle.append(c_init_z + sin[k + 1])
             self.l_cdot_bounds.append([max_velocity, max_velocity, max_velocity])
+            self.l_cdot_switch.append(0.)
             self.l_f_bounds.append([0., 0., 0.])
         for k in range(0, 2):  # 2 nodes down
             self.l_cycle.append(c_init_z)
             self.l_cdot_bounds.append([0., 0., 0.])
+            self.l_cdot_switch.append(1.)
             self.l_f_bounds.append([max_force, max_force, max_force])
         for k in range(0, 8):  # 8 nodes down (other step)
             self.l_cycle.append(c_init_z)
             self.l_cdot_bounds.append([0., 0., 0.])
+            self.l_cdot_switch.append(1.)
             self.l_f_bounds.append([max_force, max_force, max_force])
         self.l_cycle.append(c_init_z) # last node down
         self.l_cdot_bounds.append([0., 0., 0.])
+        self.l_cdot_switch.append(1.)
         self.l_f_bounds.append([max_force, max_force, max_force])
 
         # right step cycle
         self.r_cycle = []
         self.r_cdot_bounds = []
+        self.r_cdot_switch = []
         self.r_f_bounds = []
         for k in range(0, 2):  # 2 nodes down
             self.r_cycle.append(c_init_z)
             self.r_cdot_bounds.append([0., 0., 0.])
+            self.r_cdot_switch.append(1.)
             self.r_f_bounds.append([max_force, max_force, max_force])
         for k in range(0, 8):  # 8 nodes down (other step)
             self.r_cycle.append(c_init_z)
             self.r_cdot_bounds.append([0., 0., 0.])
+            self.r_cdot_switch.append(1.)
             self.r_f_bounds.append([max_force, max_force, max_force])
         for k in range(0, 2):  # 2 nodes down
             self.r_cycle.append(c_init_z)
             self.r_cdot_bounds.append([0., 0., 0.])
+            self.r_cdot_switch.append(1.)
             self.r_f_bounds.append([max_force, max_force, max_force])
         for k in range(0, 8):  # 8 nodes step
             self.r_cycle.append(c_init_z + sin[k + 1])
             self.r_cdot_bounds.append([max_velocity, max_velocity, max_velocity])
+            self.r_cdot_switch.append(0.)
             self.r_f_bounds.append([0., 0., 0.])
         self.r_cycle.append(c_init_z)  # last node down
         self.r_cdot_bounds.append([0., 0., 0.])
+        self.r_cdot_switch.append(1.)
         self.r_f_bounds.append([max_force, max_force, max_force])
 
         self.action = ""
@@ -108,11 +121,13 @@ class steps_phase:
                 for i in [0, 3]:
                     self.c_ref[i].assign(self.l_cycle[ref_id], nodes = k)
                     self.cdot[i].setBounds(-1.*np.array(self.l_cdot_bounds[ref_id]), np.array(self.l_cdot_bounds[ref_id]), nodes=k)
+                    self.cdot_switch[i].assign(self.l_cdot_switch[ref_id])
                     if k < self.nodes:
                         self.f[i].setBounds(-1.*np.array(self.l_f_bounds[ref_id]), np.array(self.l_f_bounds[ref_id]), nodes=k)
                 for i in [1, 2]:
                     self.c_ref[i].assign(self.r_cycle[ref_id], nodes = k)
                     self.cdot[i].setBounds(-1.*np.array(self.r_cdot_bounds[ref_id]), np.array(self.r_cdot_bounds[ref_id]), nodes=k)
+                    self.cdot_switch[i].assign(self.r_cdot_switch[ref_id])
                     if k < self.nodes:
                         self.f[i].setBounds(-1.*np.array(self.r_f_bounds[ref_id]), np.array(self.r_f_bounds[ref_id]), nodes=k)
 
@@ -120,11 +135,13 @@ class steps_phase:
                 for i in range(0, self.contact_model):
                     self.c_ref[i].assign(self.l_cycle[ref_id], nodes = k)
                     self.cdot[i].setBounds(-1.*np.array(self.l_cdot_bounds[ref_id]), np.array(self.l_cdot_bounds[ref_id]), nodes=k)
+                    self.cdot_switch[i].assign(self.l_cdot_switch[ref_id])
                     if k < self.nodes:
                         self.f[i].setBounds(-1.*np.array(self.l_f_bounds[ref_id]), np.array(self.l_f_bounds[ref_id]), nodes=k)
                 for i in range(self.contact_model, self.contact_model * self.number_of_legs):
                     self.c_ref[i].assign(self.r_cycle[ref_id], nodes = k)
                     self.cdot[i].setBounds(-1.*np.array(self.r_cdot_bounds[ref_id]), np.array(self.r_cdot_bounds[ref_id]), nodes=k)
+                    self.cdot_switch[i].assign(self.r_cdot_switch[ref_id])
                     if k < self.nodes:
                         self.f[i].setBounds(-1.*np.array(self.r_f_bounds[ref_id]), np.array(self.r_f_bounds[ref_id]), nodes=k)
 
