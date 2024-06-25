@@ -346,16 +346,6 @@ wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref
                       contact_model=contact_model, max_force=max_contact_force, max_velocity=max_contact_velocity)
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 while not rospy.is_shutdown():
-    # automatically set initial guess from solution to variables in variables_dict
-    mat_storer.setInitialGuess(variables_dict, solution)
-    # open loop
-    r.setBounds(solution['r'][:, 1], solution['r'][:, 1], 0)
-    rdot.setBounds(solution['rdot'][:, 1], solution['rdot'][:, 1], 0)
-    o.setBounds(solution['o'][:, 1], solution['o'][:, 1], 0)
-    w.setBounds(solution['w'][:, 1], solution['w'][:, 1], 0)
-    for i in range(0, nc):
-        c[i].setBounds(solution['c' + str(i)][:, 1], solution['c' + str(i)][:, 1], 0)
-        cdot[i].setBounds(solution['cdot' + str(i)][:, 1], solution['cdot' + str(i)][:, 1], 0)
 
     solver.setInitialState(state)
 
@@ -400,14 +390,9 @@ while not rospy.is_shutdown():
     else:
         wpg.set("standing")
 
+    # solve
     tic()
     solver.solve()
-    #print("r: ", solution["r"])
-    #print("rdot: ", solution["rdot"])
-    #print("w: ", solution["w"])
-    #exit()
-
-
     solution_time_pub.publish(toc())
     solution = solver.getSolutionDict()
 
