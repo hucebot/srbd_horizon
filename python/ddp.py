@@ -158,8 +158,8 @@ class DDPSolver(Solver):
             if node < var.getLowerBounds().shape[1]:
                 #self.param_var[var.getName() + "lower"].assign(np.full(var.shape, -1e6)) #var.getLowerBounds()[:,node])
                 #self.param_var[var.getName() + "upper"].assign(np.full(var.shape, 1e6)) #var.getUpperBounds()[:,node])
-                self.param_var[var.getName() + "lower"].assign(np.nan_to_num(var.getLowerBounds()[:,node], posinf=1e6, neginf=-1e6))
-                self.param_var[var.getName() + "upper"].assign(np.nan_to_num(var.getUpperBounds()[:,node], posinf=1e6, neginf=-1e6))
+                self.param_var[var.getName() + "lower"].assign(np.nan_to_num(var.getLowerBounds()[:,node], posinf=1e9, neginf=-1e9))
+                self.param_var[var.getName() + "upper"].assign(np.nan_to_num(var.getUpperBounds()[:,node], posinf=1e9, neginf=-1e9))
 
         param_values_at_node = list()
         for i_params in self.param_var.values():
@@ -169,8 +169,8 @@ class DDPSolver(Solver):
 
     def get_L(self, node):
         cost = 0
-        constraint_weight = 1e6
-        exp_parameter = 50.0
+        constraint_weight = 1e9
+        exp_parameter = 6.0
         for val in self.fun_container.getCost().values():
             if node in val.getNodes():
                 #self.print_cost_info(val)
