@@ -7,6 +7,7 @@ import numpy as np
 from horizon import problem, variables
 from horizon.utils import utils, kin_dyn, resampler_trajectory, mat_storer
 from horizon.transcriptions.transcriptor import Transcriptor
+from horizon.transcriptions import integrators
 from horizon.solvers import solver
 from horizon.ros.replay_trajectory import *
 import time
@@ -336,7 +337,7 @@ solver_offline = solver.Solver.make_solver(SOLVER(), prb, i_opts)
 
 solver_offline.solve()
 solution = solver_offline.getSolutionDict()
-
+state = solution["x_opt"][:,0]
 
 
 
@@ -374,12 +375,19 @@ if SOLVER() == 'gnsqp':
 #solver = solver.Solver.make_solver(SOLVER(), prb, opts)
 import ddp
 opts = dict()
-opts["max_iters"] = 1
+opts["max_iters"] = 20
 solver = ddp.DDPSolver(prb, opts=opts)
 solver.set_u_warmstart(solution["u_opt"])
 
 # solver.set_iteration_callback()
 
+#define discrete dynamics
+dae = dict()
+dae["x"] = cs.vertcat(prb.getState().getVars())
+dae["ode"] = prb.getDynamics()
+dae["p"] = cs.vertcat(prb.getInput().getVars())
+dae["quad"] = 0.
+simulation_euler_integrator = integrators.EULER(dae)
 
 """
 Walking patter generator and scheduler
@@ -401,12 +409,7 @@ while not rospy.is_shutdown():
         c[i].setBounds(solution['c' + str(i)][:, 1], solution['c' + str(i)][:, 1], 0)
         cdot[i].setBounds(solution['cdot' + str(i)][:, 1], solution['cdot' + str(i)][:, 1], 0)
 
-    solver.setInitialState(np.concatenate(
-        [r.getBounds()[0][0:3, 0], o.getBounds()[0][0:4, 0], c[0].getBounds()[0][0:3, 0], c[1].getBounds()[0][0:3, 0],
-         c[2].getBounds()[0][0:3, 0],
-         c[3].getBounds()[0][0:3, 0], rdot.getBounds()[0][0:3, 0], w.getBounds()[0][0:3, 0],
-         cdot[0].getBounds()[0][0:3, 0],
-         cdot[1].getBounds()[0][0:3, 0], cdot[2].getBounds()[0][0:3, 0], cdot[3].getBounds()[0][0:3, 0]]))
+    solver.setInitialState(state)
 
     motion = "standing"
     if joy_msg is not None:
@@ -478,15 +481,9 @@ while not rospy.is_shutdown():
         cc[i] = solution["c" + str(i)][:, 0]
         ff[i] = solution["f" + str(i)][:, 0]
 
-    #todo: make it generic!
-    input = np.concatenate([solution["cddot0"][:, 0], ff[0],solution["cddot1"][:, 0], ff[1],solution["cddot2"][:, 0], ff[2],
-                           solution["cddot3"][:, 0], ff[3]])
-    state = np.concatenate([solution["r"][:, 0], solution["o"][:, 0],
-                                     solution["c0"][:, 0], solution["c1"][:, 0], solution["c2"][:, 0], solution["c3"][:, 0],
-                                     solution["rdot"][:, 0], solution["w"][:, 0],
-                                     solution["cdot0"][:, 0], solution["cdot1"][:, 0], solution["cdot2"][:, 0],
-                                     solution["cdot3"][:, 0]
-                                     ])
+    # simulation integration
+    input = solution["u_opt"][:, 0]
+    state = simulation_euler_integrator(state, input, prb.getDt())[0]
     rddot0 = RDDOT(input)
     wdot0 = WDOT(state, input)
 
