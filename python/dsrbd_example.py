@@ -397,6 +397,10 @@ while not rospy.is_shutdown():
     else:
         wpg.set("standing")
 
+    # print the value of cdot_switch at every time step
+    for i in range(0, nc):
+        print(cdot_switch[i].getValues())
+
     # solve
     tic()
     solver.solve()
@@ -424,8 +428,8 @@ while not rospy.is_shutdown():
     # simulation integration
     input = solution["u_opt"][:, 0]
     state = simulation_euler_integrator(state, input, prb.getDt())[0]
-    print(f"state:", solution["x_opt"])
-    print(f"input:",  solution["u_opt"])
+    #print(f"state:", solution["x_opt"])
+    #print(f"input:", solution["u_opt"])
     rddot0 = RDDOT(input)
     wdot0 = WDOT(state, input)
 
