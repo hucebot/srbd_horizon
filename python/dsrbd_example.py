@@ -379,13 +379,13 @@ while not rospy.is_shutdown():
     if motion == "standing":
         alphaX, alphaY = 0.1, 0.1
     else:
-        alphaX, alphaY = 0.1, 0.1
+        alphaX, alphaY = 0.05, 0.05
 
+    for j in range(1, ns + 1):
+        rdot_ref.assign(rdot_ref.getValues(nodes=j), nodes=j - 1)
     if joy_msg is not None:
-        rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]],
-                        nodes=range(1, ns + 1))  # com velocities
-        w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]],
-                     nodes=range(1, ns + 1))  # base angular velocities
+        rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=range(ns, ns + 1))  # com velocities
+        w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=range(1, ns + 1))  # base angular velocities
         if (joy_msg.buttons[3]):
             Wo.assign(cs.sqrt(1e5))
         else:
@@ -394,7 +394,7 @@ while not rospy.is_shutdown():
         axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
         axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
 
-        rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=range(1, ns + 1))  # com velocities
+        rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=range(ns, ns + 1))  # com velocities
         w_ref.assign([0, 0, 0], nodes=range(1, ns + 1))  # base angular velocities
         Wo.assign(0.)
 

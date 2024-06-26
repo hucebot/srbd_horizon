@@ -44,8 +44,8 @@ class steps_phase:
             self.f_bounds.append([max_force, max_force, max_force])
 
 
-        ss_duration = 8
-        ds_duration = 2
+        ss_duration = 5
+        ds_duration = 5
 
         #STEP
         sin = 0.1 * np.sin(np.linspace(0, np.pi, 10))
@@ -112,10 +112,10 @@ class steps_phase:
         self.action = ""
 
     def set(self, action):
-        for j in range(1, self.nodes):
+        for j in range(1, self.nodes+1):
             for i in range(0, self.contact_model * self.number_of_legs):
-                self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j+1), nodes=j)
-                self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j+1), nodes=j)
+                self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j-1)
+                self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j-1)
 
 
         self.action = action
