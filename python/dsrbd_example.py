@@ -128,7 +128,8 @@ M = kindyn.crba()
 I = M(q=joint_init)['B'][3:6, 3:6]
 print(f"I centroidal in base: {I}")
 w_R_b = utils.toRot(o)
-rddot, wdot = kin_dyn.fSRBD(m, w_R_b * I * w_R_b.T, f, r, c, w)
+force_scaling = 1000.
+rddot, wdot = kin_dyn.fSRBD(m/force_scaling, w_R_b * (I/force_scaling) * w_R_b.T, f, r, c, w) #scaled forces
 
 RDDOT = cs.Function('rddot', [prb.getInput().getVars()], [rddot])
 WDOT = cs.Function('wdot', [prb.getState().getVars(), prb.getInput().getVars()], [wdot])
@@ -208,8 +209,8 @@ w.setBounds([0., 0., 0.], [0., 0., 0.], 0)
 #prb.createResidual("rz_tracking", np.sqrt(rz_tracking_gain) *  (r[2] - com[2]), nodes=range(1, ns+1))
 rz_tracking_gain = rospy.get_param("rz_tracking_gain", 1e3)
 print(f"rz_tracking_gain: {rz_tracking_gain}")
-prb.createResidual("rz_tracking", np.sqrt(rz_tracking_gain) *  (r[2] - com[2]), nodes=range(1, ns+1))
-prb.createResidual("rxy_tracking", np.sqrt(rz_tracking_gain) *  (r[:2] - (c[0][:2]+c[1][:2]+c[2][:2]+c[3][:2])*0.25), nodes=range(1, ns+1))
+prb.createResidual("rz_tracking", np.sqrt(rz_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns+1))
+#prb.createResidual("rxy_tracking", np.sqrt(rz_tracking_gain) * (r[:2] - (c[0][:2]+c[1][:2]+c[2][:2]+c[3][:2])*0.25), nodes=range(1, ns+1))
 
 # o_tracking is used to keep the base orientation at identity, its gain is initialize at 0 and set to non-0 only when a button is pressed
 Wo = prb.createParameter('Wo', 1)
@@ -261,8 +262,8 @@ c_ref = dict()
 cdot_switch = dict()
 for i in range(0, nc):
     # min_f try to minimze the contact forces (can be seen as distribute equally the contact forces)
-    prb.createResidual("min_fxy" + str(i), np.sqrt(min_f_gain) * f[i][:2], nodes=list(range(0, ns)))
-    prb.createResidual("min_fz" + str(i), np.sqrt(min_f_gain) * (f[i][2] - m*9.81*0.25), nodes=list(range(0, ns)))
+    prb.createResidual("min_f" + str(i), force_scaling * np.sqrt(min_f_gain) * f[i], nodes=list(range(0, ns)))
+    #prb.createResidual("min_fz" + str(i), np.sqrt(min_f_gain) * (f[i][2] - m*9.81*0.25), nodes=list(range(0, ns)))
 
     # cz_tracking is used to track the z reference for the feet: notice that is a constraint
     c_ref[i] = prb.createParameter("c_ref" + str(i), 1)
@@ -283,7 +284,7 @@ for i, fi in f.items():
     #prb.createIntermediateConstraint(f"f{i}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
 
     #prb.createIntermediateConstraint(f"f{i}_active", (1.-cdot_switch[i])*fi)
-    prb.createResidual(f"f{i}_activex", 1e0*(1.-cdot_switch[i])*fi, nodes=list(range(0, ns)))
+    prb.createResidual(f"f{i}_activex", force_scaling * 1e0*(1.-cdot_switch[i])*fi, nodes=list(range(0, ns)))
 
 # this constraint is used to keep points which belong to the same contacts together
 # note: needs as well to be rotated in future to consider w x p
@@ -340,7 +341,8 @@ if SOLVER() == 'gnsqp':
 import ddp
 opts = dict()
 opts["max_iters"] = 100
-opts["alpha_converge_threshold"] = 1e-3
+opts["alpha_converge_threshold"] = 1e-12
+opts["beta"] = 1e-3
 solver = ddp.DDPSolver(prb, opts=opts)
 solver.set_u_warmstart(solution["u_opt"])
 
@@ -403,10 +405,6 @@ while not rospy.is_shutdown():
     else:
         wpg.set("standing")
 
-    # print the value of cdot_switch at every time step
-    for i in range(0, nc):
-        print(cdot_switch[i].getValues())
-
     # solve
     tic()
     solver.solve()
@@ -420,7 +418,7 @@ while not rospy.is_shutdown():
     t = rospy.Time().now()
     utilities.SRBDTfBroadcaster(solution['r'][:, 0], solution['o'][:, 0], c0_hist, t)
     for i in range(0, nc):
-        viz.publishContactForce(t, solution['f' + str(i)][:, 0], 'c' + str(i))
+        viz.publishContactForce(t, force_scaling * solution['f' + str(i)][:, 0], 'c' + str(i))
         viz.publishPointTrj(solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
     viz.SRBDViewer(I, "SRB", t, nc)  # TODO: should we use w_R_b * I * w_R_b.T?
     viz.publishPointTrj(solution["r"], t, "SRB", "world")
@@ -439,7 +437,7 @@ while not rospy.is_shutdown():
     rddot0 = RDDOT(input)
     wdot0 = WDOT(state, input)
 
-    srbd_0 = kin_dyn.SRBD(m, I, ff, solution["r"][:, 0], rddot0, cc, solution["w"][:, 0], wdot0)
+    srbd_0 = kin_dyn.SRBD(m/force_scaling, I/force_scaling, ff, solution["r"][:, 0], rddot0, cc, solution["w"][:, 0], wdot0)
     srbd_msg.header.stamp = t
     srbd_msg.wrench.force.x = srbd_0[0]
     srbd_msg.wrench.force.y = srbd_0[1]

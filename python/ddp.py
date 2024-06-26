@@ -25,6 +25,9 @@ class DDPSolver(Solver):
         self.line_search_decrease_factor = 0.5
         if "line_search_decrease_factor" in self.opts:
             self.line_search_decrease_factor = self.opts["line_search_decrease_factor"]
+        self.beta = 1e-4
+        if "beta" in self.opts:
+            self.beta = self.opts["beta"]
 
         # generate problem to be solved
         self.var_container = self.prb.var_container
@@ -85,7 +88,8 @@ class DDPSolver(Solver):
         self.ddp_solver = pyddp.DdpSolver(self.state_size, self.input_size, self.f_list, self.L_list, self.L_term,
                                           max_iters=self.max_iters, alpha_0=self.alpha_0,
                                           alpha_converge_threshold=self.alpha_converge_threshold,
-                                          line_search_decrease_factor=self.line_search_decrease_factor)
+                                          line_search_decrease_factor=self.line_search_decrease_factor,
+                                          beta=self.beta)
 
     def solve(self) -> bool:
         # 1. update parameters

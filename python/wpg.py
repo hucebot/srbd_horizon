@@ -44,8 +44,8 @@ class steps_phase:
             self.f_bounds.append([max_force, max_force, max_force])
 
 
-        ss_duration = 3
-        ds_duration = 7
+        ss_duration = 8
+        ds_duration = 2
 
         #STEP
         sin = 0.1 * np.sin(np.linspace(0, np.pi, 10))
@@ -112,82 +112,86 @@ class steps_phase:
         self.action = ""
 
     def set(self, action):
-        t = self.nodes - self.step_counter
+        for j in range(1, self.nodes):
+            for i in range(0, self.contact_model * self.number_of_legs):
+                self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j+1), nodes=j)
+                self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j+1), nodes=j)
 
-        for k in range(max(t, 0), self.nodes + 1):
-            ref_id = (k - t)%self.nodes
 
-            if(ref_id == 0):
-                self.action = action
-
-            if self.action == "trot":
-                for i in [0, 3]:
-                    self.c_ref[i].assign(self.l_cycle[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1.*np.array(self.l_cdot_bounds[ref_id]), np.array(self.l_cdot_bounds[ref_id]), nodes=k)
-                    self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1.*np.array(self.l_f_bounds[ref_id]), np.array(self.l_f_bounds[ref_id]), nodes=k)
-                for i in [1, 2]:
-                    self.c_ref[i].assign(self.r_cycle[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1.*np.array(self.r_cdot_bounds[ref_id]), np.array(self.r_cdot_bounds[ref_id]), nodes=k)
-                    self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1.*np.array(self.r_f_bounds[ref_id]), np.array(self.r_f_bounds[ref_id]), nodes=k)
-
-            elif self.action == "step":
-                for i in range(0, self.contact_model):
-                    self.c_ref[i].assign(self.l_cycle[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1.*np.array(self.l_cdot_bounds[ref_id]), np.array(self.l_cdot_bounds[ref_id]), nodes=k)
-                    self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1.*np.array(self.l_f_bounds[ref_id]), np.array(self.l_f_bounds[ref_id]), nodes=k)
-                for i in range(self.contact_model, self.contact_model * self.number_of_legs):
-                    self.c_ref[i].assign(self.r_cycle[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1.*np.array(self.r_cdot_bounds[ref_id]), np.array(self.r_cdot_bounds[ref_id]), nodes=k)
-                    self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1.*np.array(self.r_f_bounds[ref_id]), np.array(self.r_f_bounds[ref_id]), nodes=k)
-
-            elif self.action == "jump":
-                for i in range(0, len(self.c)):
-                    self.c_ref[i].assign(self.jump_c[ref_id], nodes = k)
-                    self.cdot[i].setBounds(-1. * np.array(self.jump_cdot_bounds[ref_id]), np.array(self.jump_cdot_bounds[ref_id]), nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1. * np.array(self.jump_f_bounds[ref_id]), np.array(self.jump_f_bounds[ref_id]), nodes=k)
-
-            else:
-                for i in range(0, len(self.c)):
-                    self.c_ref[i].assign(self.stance[ref_id], nodes=k)
-                    self.cdot[i].setBounds(-1. * np.array(self.cdot_bounds[ref_id]), np.array(self.cdot_bounds[ref_id]), nodes=k)
-                    if k < self.nodes:
-                        self.f[i].setBounds(-1. * np.array(self.f_bounds[ref_id]), np.array(self.f_bounds[ref_id]), nodes=k)
-
-        self.step_counter += 1
-
-    """def set(self, action):
         self.action = action
-        k = self.nodes
-        ref_id = self.step_counter % self.nodes
-
         if self.action == "step":
+            ref_id = self.step_counter%self.nodes
             for i in range(0, self.contact_model):
-                self.c_ref[i].assign(self.l_cycle[ref_id], nodes = k)
-                self.cdot[i].setBounds(-1.*np.array(self.l_cdot_bounds[ref_id]), np.array(self.l_cdot_bounds[ref_id]), nodes=k)
-                self.cdot_switch[i].assign(self.l_cdot_switch[ref_id])
-                if k < self.nodes:
-                    self.f[i].setBounds(-1.*np.array(self.l_f_bounds[ref_id]), np.array(self.l_f_bounds[ref_id]), nodes=k)
+                self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=self.nodes)
+                self.c_ref[i].assign(self.l_cycle[ref_id], nodes=self.nodes)
             for i in range(self.contact_model, self.contact_model * self.number_of_legs):
-                self.c_ref[i].assign(self.r_cycle[ref_id], nodes = k)
-                self.cdot[i].setBounds(-1.*np.array(self.r_cdot_bounds[ref_id]), np.array(self.r_cdot_bounds[ref_id]), nodes=k)
-                self.cdot_switch[i].assign(self.r_cdot_switch[ref_id])
-                if k < self.nodes:
-                    self.f[i].setBounds(-1.*np.array(self.r_f_bounds[ref_id]), np.array(self.r_f_bounds[ref_id]), nodes=k)
+                self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=self.nodes)
+                self.c_ref[i].assign(self.r_cycle[ref_id], nodes=self.nodes)
 
         else:
             for i in range(0, len(self.c)):
-                self.c_ref[i].assign(self.stance[ref_id], nodes=k)
-                self.cdot[i].setBounds(-1. * np.array(self.cdot_bounds[ref_id]), np.array(self.cdot_bounds[ref_id]), nodes=k)
-                if k < self.nodes:
-                    self.f[i].setBounds(-1. * np.array(self.f_bounds[ref_id]), np.array(self.f_bounds[ref_id]), nodes=k)
+                self.cdot_switch[i].assign(1., nodes=self.nodes)
+                self.c_ref[i].assign(0., nodes=self.nodes)
 
-        self.step_counter += 1"""
+        self.step_counter += 1
+
+        for c in self.cdot_switch:
+            print(self.cdot_switch[c].getValues())
+
+    # def set(self, action):
+    #     t = self.nodes - self.step_counter
+    #
+    #     for k in range(max(t, 0), self.nodes + 1):
+    #         ref_id = (k - t)%self.nodes
+    #
+    #         if(ref_id == 0):
+    #             self.action = action
+    #
+    #         if self.action == "trot":
+    #             for i in [0, 3]:
+    #                 self.c_ref[i].assign(self.l_cycle[ref_id], nodes = k)
+    #                 self.cdot[i].setBounds(-1.*np.array(self.l_cdot_bounds[ref_id]), np.array(self.l_cdot_bounds[ref_id]), nodes=k)
+    #                 self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=k)
+    #                 if k < self.nodes:
+    #                     self.f[i].setBounds(-1.*np.array(self.l_f_bounds[ref_id]), np.array(self.l_f_bounds[ref_id]), nodes=k)
+    #             for i in [1, 2]:
+    #                 self.c_ref[i].assign(self.r_cycle[ref_id], nodes = k)
+    #                 self.cdot[i].setBounds(-1.*np.array(self.r_cdot_bounds[ref_id]), np.array(self.r_cdot_bounds[ref_id]), nodes=k)
+    #                 self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=k)
+    #                 if k < self.nodes:
+    #                     self.f[i].setBounds(-1.*np.array(self.r_f_bounds[ref_id]), np.array(self.r_f_bounds[ref_id]), nodes=k)
+    #
+    #         elif self.action == "step":
+    #             for i in range(0, self.contact_model):
+    #                 self.c_ref[i].assign(self.l_cycle[ref_id], nodes = k)
+    #                 self.cdot[i].setBounds(-1.*np.array(self.l_cdot_bounds[ref_id]), np.array(self.l_cdot_bounds[ref_id]), nodes=k)
+    #                 self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=k)
+    #                 if k < self.nodes:
+    #                     self.f[i].setBounds(-1.*np.array(self.l_f_bounds[ref_id]), np.array(self.l_f_bounds[ref_id]), nodes=k)
+    #             for i in range(self.contact_model, self.contact_model * self.number_of_legs):
+    #                 self.c_ref[i].assign(self.r_cycle[ref_id], nodes = k)
+    #                 self.cdot[i].setBounds(-1.*np.array(self.r_cdot_bounds[ref_id]), np.array(self.r_cdot_bounds[ref_id]), nodes=k)
+    #                 self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=k)
+    #                 if k < self.nodes:
+    #                     self.f[i].setBounds(-1.*np.array(self.r_f_bounds[ref_id]), np.array(self.r_f_bounds[ref_id]), nodes=k)
+    #
+    #         elif self.action == "jump":
+    #             for i in range(0, len(self.c)):
+    #                 self.c_ref[i].assign(self.jump_c[ref_id], nodes = k)
+    #                 self.cdot[i].setBounds(-1. * np.array(self.jump_cdot_bounds[ref_id]), np.array(self.jump_cdot_bounds[ref_id]), nodes=k)
+    #                 if k < self.nodes:
+    #                     self.f[i].setBounds(-1. * np.array(self.jump_f_bounds[ref_id]), np.array(self.jump_f_bounds[ref_id]), nodes=k)
+    #
+    #         else:
+    #             for i in range(0, len(self.c)):
+    #                 self.c_ref[i].assign(self.stance[ref_id], nodes=k)
+    #                 self.cdot[i].setBounds(-1. * np.array(self.cdot_bounds[ref_id]), np.array(self.cdot_bounds[ref_id]), nodes=k)
+    #                 if k < self.nodes:
+    #                     self.f[i].setBounds(-1. * np.array(self.f_bounds[ref_id]), np.array(self.f_bounds[ref_id]), nodes=k)
+    #
+    #     self.step_counter += 1
+    #
+    #     for c in self.cdot_switch:
+    #         print(self.cdot_switch[c].getValues())
+
+
