@@ -203,9 +203,13 @@ w.setBounds([0., 0., 0.], [0., 0., 0.], 0)
 
 # set up some therms of the COST FUNCTION
 # rz_tracking is used to keep the com height around the initial value
-rz_tracking_gain = rospy.get_param("rz_tracking_gain", 2e3)
+#rz_tracking_gain = rospy.get_param("rz_tracking_gain", 2e3)
+#print(f"rz_tracking_gain: {rz_tracking_gain}")
+#prb.createResidual("rz_tracking", np.sqrt(rz_tracking_gain) *  (r[2] - com[2]), nodes=range(1, ns+1))
+rz_tracking_gain = rospy.get_param("rz_tracking_gain", 1e3)
 print(f"rz_tracking_gain: {rz_tracking_gain}")
 prb.createResidual("rz_tracking", np.sqrt(rz_tracking_gain) *  (r[2] - com[2]), nodes=range(1, ns+1))
+prb.createResidual("rxy_tracking", np.sqrt(rz_tracking_gain) *  (r[:2] - (c[0][:2]+c[1][:2]+c[2][:2]+c[3][:2])*0.25), nodes=range(1, ns+1))
 
 # o_tracking is used to keep the base orientation at identity, its gain is initialize at 0 and set to non-0 only when a button is pressed
 Wo = prb.createParameter('Wo', 1)
@@ -257,7 +261,8 @@ c_ref = dict()
 cdot_switch = dict()
 for i in range(0, nc):
     # min_f try to minimze the contact forces (can be seen as distribute equally the contact forces)
-    prb.createResidual("min_f" + str(i), np.sqrt(min_f_gain) * f[i], nodes=list(range(0, ns)))
+    prb.createResidual("min_fxy" + str(i), np.sqrt(min_f_gain) * f[i][:2], nodes=list(range(0, ns)))
+    prb.createResidual("min_fz" + str(i), np.sqrt(min_f_gain) * (f[i][2] - m*9.81*0.25), nodes=list(range(0, ns)))
 
     # cz_tracking is used to track the z reference for the feet: notice that is a constraint
     c_ref[i] = prb.createParameter("c_ref" + str(i), 1)
@@ -277,7 +282,8 @@ for i, fi in f.items():
     fc, fc_lb, fc_ub = kin_dyn.linearized_friction_cone(fi, mu, StanceR)
     #prb.createIntermediateConstraint(f"f{i}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
 
-    prb.createIntermediateConstraint(f"f{i}_active", (1.-cdot_switch[i])*fi)
+    #prb.createIntermediateConstraint(f"f{i}_active", (1.-cdot_switch[i])*fi)
+    prb.createResidual(f"f{i}_activex", 1e0*(1.-cdot_switch[i])*fi, nodes=list(range(0, ns)))
 
 # this constraint is used to keep points which belong to the same contacts together
 # note: needs as well to be rotated in future to consider w x p
@@ -333,7 +339,7 @@ if SOLVER() == 'gnsqp':
 #solver = solver.Solver.make_solver(SOLVER(), prb, opts)
 import ddp
 opts = dict()
-opts["max_iters"] = 20
+opts["max_iters"] = 100
 opts["alpha_converge_threshold"] = 1e-3
 solver = ddp.DDPSolver(prb, opts=opts)
 solver.set_u_warmstart(solution["u_opt"])

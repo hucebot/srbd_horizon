@@ -169,7 +169,7 @@ class DDPSolver(Solver):
 
     def get_L(self, node):
         cost = 0
-        constraint_weight = 1e9
+        constraint_weight = 1e6
         exp_parameter = 6.0
         for val in self.fun_container.getCost().values():
             if node in val.getNodes():

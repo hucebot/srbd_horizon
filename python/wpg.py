@@ -44,8 +44,8 @@ class steps_phase:
             self.f_bounds.append([max_force, max_force, max_force])
 
 
-        ss_duration = 2
-        ds_duration = 8
+        ss_duration = 3
+        ds_duration = 7
 
         #STEP
         sin = 0.1 * np.sin(np.linspace(0, np.pi, 10))
