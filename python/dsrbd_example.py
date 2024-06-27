@@ -227,15 +227,15 @@ for i in range(0, nc):
     prb.createConstraint("cdotxy_tracking" + str(i), cdot_switch[i] * cdot[i][0:2])
 
 # create cost function terms
-prb.createResidual("rz_tracking",   np.sqrt(r_tracking_gain)    * (r[2] - com[2]),       nodes=range(1, ns+1))
-prb.createResidual("o_tracking",    orientation_tracking_gain   * (o - joint_init[3:7]), nodes=range(1, ns+1))
-prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref),     nodes=range(1, ns+1))
-prb.createResidual("w_tracking",    np.sqrt(w_tracking_gain)    * (w - w_ref),           nodes=range(1, ns+1))
-prb.createResidual("min_qddot",     np.sqrt(min_qddot_gain)     * (qddot.getVars()),     nodes=range(0, ns))
-prb.createResidual("rel_pos_y_1_4", np.sqrt(rel_pos_gain)       * (-c[0][1] + c[2][1] - d_initial_1[1]))
-prb.createResidual("rel_pos_x_1_4", np.sqrt(rel_pos_gain)       * (-c[0][0] + c[2][0] - d_initial_1[0]))
-prb.createResidual("rel_pos_y_3_6", np.sqrt(rel_pos_gain)       * (-c[1][1] + c[3][1] - d_initial_2[1]))
-prb.createResidual("rel_pos_x_3_6", np.sqrt(rel_pos_gain)       * (-c[1][0] + c[3][0] - d_initial_2[0]))
+prb.createResidual("rz_tracking",   np.sqrt(r_tracking_gain)    * (r[2] - com[2]),                       nodes=range(1, ns+1))
+prb.createResidual("o_tracking",    orientation_tracking_gain   * (o - joint_init[3:7]),                 nodes=range(1, ns+1))
+prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref),                     nodes=range(1, ns+1))
+prb.createResidual("w_tracking",    np.sqrt(w_tracking_gain)    * (w - w_ref),                           nodes=range(1, ns+1))
+prb.createResidual("rel_pos_y_1_4", np.sqrt(rel_pos_gain)       * (-c[0][1] + c[2][1] - d_initial_1[1]), nodes=range(1, ns+1))
+prb.createResidual("rel_pos_x_1_4", np.sqrt(rel_pos_gain)       * (-c[0][0] + c[2][0] - d_initial_1[0]), nodes=range(1, ns+1))
+prb.createResidual("rel_pos_y_3_6", np.sqrt(rel_pos_gain)       * (-c[1][1] + c[3][1] - d_initial_2[1]), nodes=range(1, ns+1))
+prb.createResidual("rel_pos_x_3_6", np.sqrt(rel_pos_gain)       * (-c[1][0] + c[3][0] - d_initial_2[0]), nodes=range(1, ns+1))
+prb.createResidual("min_qddot",     np.sqrt(min_qddot_gain)     * (qddot.getVars()),                     nodes=range(0, ns))
 for i in range(0, nc):
     prb.createResidual("min_f" + str(i),         force_scaling * np.sqrt(min_f_gain) * f[i],  nodes=range(0, ns))
     prb.createResidual("f" + str(i) + "_active", force_scaling * np.sqrt(force_switch_weight)
@@ -278,7 +278,7 @@ opts["max_iters"] = 100
 opts["alpha_converge_threshold"] = 1e-12
 opts["beta"] = 1e-3
 solver = ddp.DDPSolver(prb, opts=opts)
-solver.set_u_warmstart(solution["u_opt"]*0)
+solver.set_u_warmstart(solution["u_opt"])
 
 #define discrete dynamics
 dae = dict()
@@ -311,7 +311,7 @@ while not rospy.is_shutdown():
         if keyboard.is_pressed('space'):
             motion = "jumping"
 
-    # shift contact plan back by one node
+    # shift reference velocities back by one node
     for j in range(1, ns + 1):
         rdot_ref.assign(rdot_ref.getValues(nodes=j), nodes=j-1)
         w_ref.assign(w_ref.getValues(nodes=j), nodes=j-1)
