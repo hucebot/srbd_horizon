@@ -284,7 +284,7 @@ for i, fi in f.items():
     #prb.createIntermediateConstraint(f"f{i}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
 
     #prb.createIntermediateConstraint(f"f{i}_active", (1.-cdot_switch[i])*fi)
-    prb.createResidual(f"f{i}_activex", force_scaling * 1e0*(1.-cdot_switch[i])*fi, nodes=list(range(0, ns)))
+    prb.createResidual(f"f{i}_active", force_scaling * 1e1*(1.-cdot_switch[i])*fi, nodes=list(range(0, ns)))
 
 # this constraint is used to keep points which belong to the same contacts together
 # note: needs as well to be rotated in future to consider w x p

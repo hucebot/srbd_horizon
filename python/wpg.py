@@ -112,23 +112,29 @@ class steps_phase:
         self.action = ""
 
     def set(self, action):
+
+        self.action = action
+        ref_id = self.step_counter%self.nodes
+
+        # shift contact plan back by one node
         for j in range(1, self.nodes+1):
             for i in range(0, self.contact_model * self.number_of_legs):
                 self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j-1)
                 self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j-1)
 
-
-        self.action = action
+        # fill last node of the contact plan
         if self.action == "step":
-            ref_id = self.step_counter%self.nodes
             for i in range(0, self.contact_model):
                 self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=self.nodes)
                 self.c_ref[i].assign(self.l_cycle[ref_id], nodes=self.nodes)
             for i in range(self.contact_model, self.contact_model * self.number_of_legs):
                 self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=self.nodes)
                 self.c_ref[i].assign(self.r_cycle[ref_id], nodes=self.nodes)
-
-        else:
+        elif self.action == "jump":
+            for i in range(0, len(self.c)):
+                self.cdot_switch[i].assign(0., nodes=self.nodes)
+                self.c_ref[i].assign(self.jump_c[ref_id], nodes=self.nodes)
+        else: # stance
             for i in range(0, len(self.c)):
                 self.cdot_switch[i].assign(1., nodes=self.nodes)
                 self.c_ref[i].assign(0., nodes=self.nodes)
