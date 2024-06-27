@@ -141,9 +141,6 @@ class steps_phase:
 
         self.step_counter += 1
 
-        for c in self.cdot_switch:
-            print(self.cdot_switch[c].getValues())
-
     # def set(self, action):
     #     t = self.nodes - self.step_counter
     #
