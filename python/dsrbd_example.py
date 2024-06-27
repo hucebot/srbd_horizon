@@ -311,24 +311,27 @@ while not rospy.is_shutdown():
         if keyboard.is_pressed('space'):
             motion = "jumping"
 
+    # shift contact plan back by one node
+    for j in range(1, ns + 1):
+        rdot_ref.assign(rdot_ref.getValues(nodes=j), nodes=j-1)
+        w_ref.assign(w_ref.getValues(nodes=j), nodes=j-1)
+
+    # assign new references based on user input
     if motion == "standing":
         alphaX, alphaY = 0.1, 0.1
     else:
         alphaX, alphaY = 0.05, 0.05
 
-    for j in range(1, ns + 1):
-        rdot_ref.assign(rdot_ref.getValues(nodes=j), nodes=j - 1)
-        
     if joy_msg is not None:
-        rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=range(ns, ns + 1))  # com velocities
-        w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=range(1, ns + 1))  # base angular velocities
+        rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=ns)
+        w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=ns)
         orientation_tracking_gain.assign(cs.sqrt(1e5) if rotate else 0.)
     else:
         axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
         axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
 
-        rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=range(ns, ns + 1))  # com velocities
-        w_ref.assign([0, 0, 0], nodes=range(1, ns + 1))  # base angular velocities
+        rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=ns)
+        w_ref.assign([0, 0, 0], nodes=ns)
         orientation_tracking_gain.assign(0.)
 
     if motion == "walking":
