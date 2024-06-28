@@ -111,6 +111,9 @@ class DDPSolver(Solver):
     def set_u_warmstart(self, u):
         self.ddp_solver.set_u_warmstart(u)
 
+    def set_x_warmstart(self, x):
+        self.ddp_solver.set_x_warmstart(x)
+
     def getSolutionDict(self):
         return self.var_solution
 

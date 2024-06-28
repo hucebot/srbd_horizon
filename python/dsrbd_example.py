@@ -279,6 +279,7 @@ opts["alpha_converge_threshold"] = 1e-12
 opts["beta"] = 1e-3
 solver = ddp.DDPSolver(prb, opts=opts)
 solver.set_u_warmstart(solution["u_opt"])
+solver.set_x_warmstart(solution["x_opt"])
 
 #define discrete dynamics
 dae = dict()
