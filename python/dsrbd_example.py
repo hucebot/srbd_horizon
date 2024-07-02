@@ -25,8 +25,6 @@ import solver_options
 import lip
 import keyboard
 
-SOLVER = lambda: 'ipopt'
-
 def joy_cb(msg):
     global joy_msg
     joy_msg = msg
@@ -245,13 +243,6 @@ for i in range(0, nc):
 max_iteration = rospy.get_param("max_iteration", 20)
 print(f"max_iteration: {max_iteration}")
 
-i_opts = solver_options.ipopt_offline_solver_options()
-if SOLVER() == 'gnsqp':
-    i_opts = solver_options.sqp_offline_solver_options(ns)
-
-solver_offline = solver.Solver.make_solver(SOLVER(), prb, i_opts)
-solver_offline.solve()
-solution = solver_offline.getSolutionDict()
 initial_state = np.array([0.,    -0.15, 0.88,
                           0.,     0.,   0.,   1.,
                           0.115,  0.,   0.,
@@ -281,12 +272,7 @@ rospy.Subscriber('/joy', Joy, joy_cb)
 global joy_msg
 joy_msg = None
 
-# online_solver
-opts = solver_options.ipopt_online_solver_options(max_iteration)
-if SOLVER() == 'gnsqp':
-    opts = solver_options.sqp_online_solver_options(max_iterations=1)
 
-#solver = solver.Solver.make_solver(SOLVER(), prb, opts)
 import ddp
 opts = dict()
 opts["max_iters"] = 100
@@ -343,7 +329,7 @@ while not rospy.is_shutdown():
     if motion == "standing":
         alphaX, alphaY = 0.1, 0.1
     else:
-        alphaX, alphaY = 0.3, 0.3
+        alphaX, alphaY = 1., 1.0
 
     if joy_msg is not None:
         rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=ns)

@@ -11,23 +11,28 @@ class DDPSolver(Solver):
     def __init__(self, prb: Problem, opts: Dict) -> None:
         super().__init__(prb, opts=opts)
         self.prb = prb
+        self.ddp_opts = pyddp.DdpSolverOptions()
 
         self.opts = opts
         self.max_iters = 100
         if "max_iters" in self.opts:
-            self.max_iters = self.opts["max_iters"]
+            self.ddp_opts.max_iters = self.opts["max_iters"]
         self.alpha_0 = 1.0
         if "alpha_0" in self.opts:
-            self.alpha_0 = self.opts["alpha_0"]
-        self.alpha_converge_threshold = 1e-1
+            self.ddp_opts.alpha_0 = self.opts["alpha_0"]
+        self.ddp_opts.alpha_converge_threshold = 1e-1
         if "alpha_converge_threshold" in self.opts:
-            self.alpha_converge_threshold = self.opts["alpha_converge_threshold"]
+            self.ddp_opts.alpha_converge_threshold = self.opts["alpha_converge_threshold"]
         self.line_search_decrease_factor = 0.5
         if "line_search_decrease_factor" in self.opts:
-            self.line_search_decrease_factor = self.opts["line_search_decrease_factor"]
+            self.ddp_opts.line_search_decrease_factor = self.opts["line_search_decrease_factor"]
         self.beta = 1e-4
         if "beta" in self.opts:
-            self.beta = self.opts["beta"]
+            self.ddp_opts.beta = self.opts["beta"]
+        if "cost_reduction_ths" in self.opts:
+            self.ddp_opts.cost_reduction_ths = self.opts["cost_reduction_ths"]
+        if "mu0" in self.opts:
+            self.ddp_opts.mu0 = self.opts["mu0"]
 
         # generate problem to be solved
         self.var_container = self.prb.var_container
@@ -86,10 +91,7 @@ class DDPSolver(Solver):
             self.param_values_list.append(self.get_params_value(node))
 
         self.ddp_solver = pyddp.DdpSolver(self.state_size, self.input_size, self.f_list, self.L_list, self.L_term,
-                                          max_iters=self.max_iters, alpha_0=self.alpha_0,
-                                          alpha_converge_threshold=self.alpha_converge_threshold,
-                                          line_search_decrease_factor=self.line_search_decrease_factor,
-                                          beta=self.beta)
+                                          self.ddp_opts)
 
     def solve(self) -> bool:
         # 1. update parameters
