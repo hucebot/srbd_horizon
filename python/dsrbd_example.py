@@ -252,7 +252,22 @@ if SOLVER() == 'gnsqp':
 solver_offline = solver.Solver.make_solver(SOLVER(), prb, i_opts)
 solver_offline.solve()
 solution = solver_offline.getSolutionDict()
-state = solution["x_opt"][:,0]
+initial_state = np.array([0.,    -0.15, 0.88,
+                          0.,     0.,   0.,   1.,
+                          0.115,  0.,   0.,
+                         -0.095,  0.,   0.,
+                          0.115, -0.3,  0.,
+                         -0.095, -0.3,  0.,
+                          0.,     0.,   0.,
+                          0.,     0.,   0.,
+                          0.,     0.,   0.,
+                          0.,     0.,   0.,
+                          0.,     0.,   0.,
+                          0.,     0.,   0.])
+static_input = np.array([0., 0., 0., 0., 0., m * 9,81 / force_scaling / 4,
+                         0., 0., 0., 0., 0., m * 9,81 / force_scaling / 4,
+                         0., 0., 0., 0., 0., m * 9,81 / force_scaling / 4,
+                         0., 0., 0., 0., 0., m * 9,81 / force_scaling / 4])
 
 rospy.init_node('srbd_mpc_test', anonymous=True)
 
@@ -278,8 +293,15 @@ opts["max_iters"] = 100
 opts["alpha_converge_threshold"] = 1e-12
 opts["beta"] = 1e-3
 solver = ddp.DDPSolver(prb, opts=opts)
-solver.set_u_warmstart(solution["u_opt"])
-solver.set_x_warmstart(solution["x_opt"])
+
+# set initial state and warmstart ddp
+state = initial_state
+x_warmstart = np.zeros((state.shape[0], ns+1))
+for i in range(0, ns+1):
+    x_warmstart[:, i] = state
+u_warmstart = np.zeros((static_input.shape[0], ns))
+for i in range(0, ns):
+    u_warmstart[:, i] = static_input
 
 #define discrete dynamics
 dae = dict()
@@ -321,7 +343,7 @@ while not rospy.is_shutdown():
     if motion == "standing":
         alphaX, alphaY = 0.1, 0.1
     else:
-        alphaX, alphaY = 0.05, 0.05
+        alphaX, alphaY = 0.3, 0.3
 
     if joy_msg is not None:
         rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=ns)
