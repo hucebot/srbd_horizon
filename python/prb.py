@@ -220,3 +220,27 @@ class SRBDProblem:
         self.oref = oref
         self.nc = nc
         self.I = I
+
+    def getInitialState(self):
+        return np.array([float(self.com[0]), float(self.com[1]), float(self.com[2]),
+                                  0., 0., 0., 1.,
+                                  float(self.initial_foot_position[0][0]), float(self.initial_foot_position[0][1]),
+                                  float(self.initial_foot_position[0][2]),
+                                  float(self.initial_foot_position[1][0]), float(self.initial_foot_position[1][1]),
+                                  float(self.initial_foot_position[1][2]),
+                                  float(self.initial_foot_position[2][0]), float(self.initial_foot_position[2][1]),
+                                  float(self.initial_foot_position[2][2]),
+                                  float(self.initial_foot_position[3][0]), float(self.initial_foot_position[3][1]),
+                                  float(self.initial_foot_position[3][2]),
+                                  0., 0., 0.,
+                                  0., 0., 0.,
+                                  0., 0., 0.,
+                                  0., 0., 0.,
+                                  0., 0., 0.,
+                                  0., 0., 0.])
+
+    def getStaticInput(self):
+        return np.array([0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4,
+                         0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4,
+                         0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4,
+                         0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4])

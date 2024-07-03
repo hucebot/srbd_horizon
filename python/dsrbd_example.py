@@ -37,22 +37,6 @@ srbd.createSRBDProblem(ns, T)
 max_iteration = rospy.get_param("max_iteration", 20)
 print(f"max_iteration: {max_iteration}")
 
-initial_state = np.array([float(srbd.com[0]), float(srbd.com[1]), float(srbd.com[2]),
-                          0.,     0.,   0.,   1.,
-                          float(srbd.initial_foot_position[0][0]),  float(srbd.initial_foot_position[0][1]),   float(srbd.initial_foot_position[0][2]),
-                          float(srbd.initial_foot_position[1][0]),  float(srbd.initial_foot_position[1][1]),   float(srbd.initial_foot_position[1][2]),
-                          float(srbd.initial_foot_position[2][0]),  float(srbd.initial_foot_position[2][1]),   float(srbd.initial_foot_position[2][2]),
-                          float(srbd.initial_foot_position[3][0]),  float(srbd.initial_foot_position[3][1]),   float(srbd.initial_foot_position[3][2]),
-                          0.,     0.,   0.,
-                          0.,     0.,   0.,
-                          0.,     0.,   0.,
-                          0.,     0.,   0.,
-                          0.,     0.,   0.,
-                          0.,     0.,   0.])
-static_input = np.array([0., 0., 0., 0., 0., srbd.m * 9.81 / srbd.force_scaling / 4,
-                         0., 0., 0., 0., 0., srbd.m * 9.81 / srbd.force_scaling / 4,
-                         0., 0., 0., 0., 0., srbd.m * 9.81 / srbd.force_scaling / 4,
-                         0., 0., 0., 0., 0., srbd.m * 9.81 / srbd.force_scaling / 4])
 
 rospy.init_node('srbd_mpc_test', anonymous=True)
 
@@ -75,13 +59,13 @@ opts["beta"] = 1e-3
 solver = ddp.DDPSolver(srbd.prb, opts=opts)
 
 # set initial state and warmstart ddp
-state = initial_state
+state = srbd.getInitialState()
 x_warmstart = np.zeros((state.shape[0], ns+1))
 for i in range(0, ns+1):
     x_warmstart[:, i] = state
-u_warmstart = np.zeros((static_input.shape[0], ns))
+u_warmstart = np.zeros((srbd.getStaticInput().shape[0], ns))
 for i in range(0, ns):
-    u_warmstart[:, i] = static_input
+    u_warmstart[:, i] = srbd.getStaticInput()
 
 #define discrete dynamics
 dae = dict()
