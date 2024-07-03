@@ -1,12 +1,14 @@
 import numpy as np
 
 class steps_phase:
-    def __init__(self, f, c, cdot, c_init_z, c_ref, cdot_switch, nodes, number_of_legs, contact_model, max_force, max_velocity):
+    def __init__(self, f, c, cdot, c_init_z, c_ref, w_ref, orientation_tracking_gain, cdot_switch, nodes, number_of_legs, contact_model, max_force, max_velocity):
         self.f = f
         self.c = c
         self.cdot = cdot
         self.c_ref = c_ref
         self.cdot_switch = cdot_switch
+        self.w_ref = w_ref
+        self.orientation_tracking_gain = orientation_tracking_gain
 
         self.number_of_legs = number_of_legs
         self.contact_model = contact_model
@@ -124,6 +126,8 @@ class steps_phase:
 
         # fill last node of the contact plan
         if self.action == "step":
+            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
             for i in range(0, self.contact_model):
                 self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=self.nodes)
                 self.c_ref[i].assign(self.l_cycle[ref_id], nodes=self.nodes)
@@ -131,10 +135,14 @@ class steps_phase:
                 self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=self.nodes)
                 self.c_ref[i].assign(self.r_cycle[ref_id], nodes=self.nodes)
         elif self.action == "jump":
+            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            self.orientation_tracking_gain.assign(0., nodes=self.nodes)
             for i in range(0, len(self.c)):
                 self.cdot_switch[i].assign(0., nodes=self.nodes)
                 self.c_ref[i].assign(self.jump_c[ref_id], nodes=self.nodes)
         else: # stance
+            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
             for i in range(0, len(self.c)):
                 self.cdot_switch[i].assign(1., nodes=self.nodes)
                 self.c_ref[i].assign(0., nodes=self.nodes)

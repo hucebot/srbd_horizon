@@ -30,3 +30,8 @@ def setWorld(frame, kindyn, q, base_link="base_link"):
 
     q[0:3] = w_T_bl_new[0:3, 3]
     q[3:7] = rho
+
+def quat_inverse(q):
+    p = q
+    p[0:3] = -p[0:3]
+    return p
