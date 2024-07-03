@@ -179,7 +179,7 @@ w.setInitialGuess([0., 0., 0.])
 # weights
 r_tracking_gain = rospy.get_param("r_tracking_gain", 1e3)
 orientation_tracking_gain = prb.createParameter('orientation_tracking_gain', 1)
-orientation_tracking_gain.assign(0.)
+orientation_tracking_gain.assign(1e1)
 rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 1e4)
 w_tracking_gain = rospy.get_param("w_tracking_gain", 1e4)
 rel_pos_gain = rospy.get_param("rel_position_gain", 1e4)
@@ -226,7 +226,11 @@ for i in range(0, nc):
 
 # create cost function terms
 prb.createResidual("rz_tracking",   np.sqrt(r_tracking_gain)    * (r[2] - com[2]),                       nodes=range(1, ns+1))
-prb.createResidual("o_tracking",    orientation_tracking_gain   * (o - joint_init[3:7]),                 nodes=range(1, ns+1))
+oref = prb.createParameter("oref", 4)
+oref.assign(utilities.quat_inverse(np.array([0., 0., 0., 1.])))
+quat_error = cs.vcat(utils.quaterion_product(o, oref))
+prb.createResidual("o_tracking_xyz", orientation_tracking_gain * quat_error[0:3], nodes=range(1, ns+1))
+prb.createResidual("o_tracking_w", orientation_tracking_gain * (quat_error[3] - 1.), nodes=range(1, ns+1))
 prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref),                     nodes=range(1, ns+1))
 prb.createResidual("w_tracking",    np.sqrt(w_tracking_gain)    * (w - w_ref),                           nodes=range(1, ns+1))
 prb.createResidual("rel_pos_y_1_4", np.sqrt(rel_pos_gain)       * (-c[0][1] + c[2][1] - d_initial_1[1]), nodes=range(1, ns+1))
@@ -298,7 +302,7 @@ dae["quad"] = 0.
 simulation_euler_integrator = integrators.EULER(dae)
 
 # Walking patter generator and scheduler
-wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, cdot_switch, ns, number_of_legs=2,
+wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, w_ref, orientation_tracking_gain, cdot_switch, ns, number_of_legs=2,
                       contact_model=contact_model, max_force=max_contact_force, max_velocity=max_contact_velocity)
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 while not rospy.is_shutdown():
@@ -324,24 +328,26 @@ while not rospy.is_shutdown():
     for j in range(1, ns + 1):
         rdot_ref.assign(rdot_ref.getValues(nodes=j), nodes=j-1)
         w_ref.assign(w_ref.getValues(nodes=j), nodes=j-1)
+        oref.assign(oref.getValues(nodes=j), nodes=j - 1)
+        orientation_tracking_gain.assign(orientation_tracking_gain.getValues(nodes=j), nodes=j - 1)
 
     # assign new references based on user input
     if motion == "standing":
         alphaX, alphaY = 0.1, 0.1
     else:
-        alphaX, alphaY = 1., 1.0
+        alphaX, alphaY = 0.5, 0.5
 
     if joy_msg is not None:
         rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=ns)
-        w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=ns)
-        orientation_tracking_gain.assign(cs.sqrt(1e5) if rotate else 0.)
+        #w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=ns)
+        #orientation_tracking_gain.assign(cs.sqrt(1e5) if rotate else 0.)
     else:
         axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
         axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
 
         rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=ns)
-        w_ref.assign([0, 0, 0], nodes=ns)
-        orientation_tracking_gain.assign(0.)
+        #w_ref.assign([0, 0, 0], nodes=ns)
+        #orientation_tracking_gain.assign(0.)
 
     if motion == "walking":
         wpg.set("step")
@@ -377,6 +383,7 @@ while not rospy.is_shutdown():
     # simulation integration
     input = solution["u_opt"][:, 0]
     state = simulation_euler_integrator(state, input, prb.getDt())[0]
+    state[3:7] /= cs.norm_2(state[3:7])
     #print(f"state:", solution["x_opt"])
     #print(f"input:", solution["u_opt"])
     rddot0 = RDDOT(input)
