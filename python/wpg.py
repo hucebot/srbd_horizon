@@ -16,65 +16,51 @@ class steps_phase:
         self.nodes = nodes
         self.step_counter = 0
 
-        #JUMP
-        self.jump_c = []
-        self.jump_cdot_bounds = []
-        self.jump_f_bounds = []
-        sin = 0.1 * np.sin(np.linspace(0, np.pi, 10))
-        for k in range(0, 7):  # 7 nodes down
-            self.jump_c.append(c_init_z)
-        for k in range(0, 8):  # 8 nodes jump
-            self.jump_c.append(c_init_z + sin[k + 1])
-        for k in range(0, 7):  # 6 nodes down
-            self.jump_c.append(c_init_z)
+        self.step_duration = 0.5
+        self.dt = 0.05
+        self.ss_share = 0.8
+        self.ds_share = 0.2
+        self.step_nodes = int(self.step_duration / self.dt)
 
-
-
-        #NO STEP
-        self.stance = []
-        for k in range(0, nodes+1):
-            self.stance.append([c_init_z])
-
-
-        ss_duration = 8
-        ds_duration = 2
-
-        #STEP
-        sin = 0.1 * np.sin(np.linspace(0, np.pi, 10))
+        # generate step cycle
+        ss_duration = int(self.ss_share * self.step_nodes)
+        ds_duration = int(self.ds_share * self.step_nodes)
+        sin = 0.1 * np.sin(np.linspace(0, np.pi, ))
+        
         #left step cycle
         self.l_cycle = []
         self.l_cdot_switch = []
-        for k in range(0, ds_duration): # 2 nodes down
+        for k in range(0, ds_duration):
             self.l_cycle.append(c_init_z)
             self.l_cdot_switch.append(1.)
-        for k in range(0, ss_duration):  # 8 nodes step
+        for k in range(0, ss_duration):
             self.l_cycle.append(c_init_z + sin[k + 1])
             self.l_cdot_switch.append(0.)
-        for k in range(0, ds_duration):  # 2 nodes down
+        for k in range(0, ds_duration):
             self.l_cycle.append(c_init_z)
             self.l_cdot_switch.append(1.)
-        for k in range(0, ss_duration):  # 8 nodes down (other step)
+        for k in range(0, ss_duration):
             self.l_cycle.append(c_init_z)
             self.l_cdot_switch.append(1.)
-        self.l_cycle.append(c_init_z) # last node down
+        self.l_cycle.append(c_init_z)
         self.l_cdot_switch.append(1.)
 
         # right step cycle
         self.r_cycle = []
         self.r_cdot_switch = []
-        for k in range(0, ds_duration):  # 2 nodes down
+        for k in range(0, ds_duration):
             self.r_cycle.append(c_init_z)
             self.r_cdot_switch.append(1.)
-        for k in range(0, ss_duration):  # 8 nodes down (other step)
+        for k in range(0, ss_duration):
             self.r_cycle.append(c_init_z)
             self.r_cdot_switch.append(1.)
-        for k in range(0, ds_duration):  # 2 nodes down
+        for k in range(0, ds_duration):
             self.r_cycle.append(c_init_z)
             self.r_cdot_switch.append(1.)
-        for k in range(0, ss_duration):  # 8 nodes step
+        for k in range(0, ss_duration):
             self.r_cycle.append(c_init_z + sin[k + 1])
             self.r_cdot_switch.append(0.)
-        self.r_cycle.append(c_init_z)  # last node down
+        self.r_cycle.append(c_init_z)
         self.r_cdot_switch.append(1.)
 
         self.action = ""
@@ -82,7 +68,7 @@ class steps_phase:
     def set(self, action):
 
         self.action = action
-        ref_id = self.step_counter%self.nodes
+        ref_id = self.step_counter % (2 * self.step_nodes)
 
         # shift contact plan back by one node
         for j in range(1, self.nodes+1):
@@ -105,7 +91,6 @@ class steps_phase:
             self.orientation_tracking_gain.assign(0., nodes=self.nodes)
             for i in range(0, len(self.c)):
                 self.cdot_switch[i].assign(0., nodes=self.nodes)
-                self.c_ref[i].assign(self.jump_c[ref_id], nodes=self.nodes)
         else: # stance
             self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
