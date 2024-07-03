@@ -382,7 +382,8 @@ while not rospy.is_shutdown():
     rddot0 = RDDOT(input)
     wdot0 = WDOT(state, input)
 
-    srbd_0 = kin_dyn.SRBD(m/force_scaling, I/force_scaling, ff, solution["r"][:, 0], rddot0, cc, solution["w"][:, 0], wdot0)
+    w_R_b0 = utils.toRot(state[3:7])
+    srbd_0 = kin_dyn.SRBD(m/force_scaling, w_R_b0*I/force_scaling*w_R_b0.T, ff, solution["r"][:, 0], rddot0, cc, solution["w"][:, 0], wdot0)
     srbd_msg.header.stamp = t
     srbd_msg.wrench.force.x = srbd_0[0]
     srbd_msg.wrench.force.y = srbd_0[1]
