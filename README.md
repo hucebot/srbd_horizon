@@ -1,5 +1,5 @@
 - [ ] fix orientation error in SRBD
-- [ ] fix rotation of I in SRBD
+- [x] fix rotation of I in SRBD
 - [ ] log everything in DDP
 - [ ] plot everything in DDP
 - [ ] prove MS DDP equations
