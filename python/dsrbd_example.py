@@ -141,40 +141,19 @@ if(len(foot_frames) != nc):
     exit()
 print(f"foot_frames: {foot_frames}")
 
-max_contact_force = rospy.get_param("max_contact_force", 1000.)
-print(f"max_contact_force: {max_contact_force}")
-max_contact_velocity = rospy.get_param("max_contact_velocity", 10.)
-print(f"max_contact_velocity: {max_contact_velocity}")
 i = 0
 initial_foot_position = dict()
 for frame in foot_frames:
     FK = kindyn.fk(frame)
     p = FK(q=joint_init)['ee_pos']
     print(f"{frame}: {p}")
-    
     # storing initial foot_position and setting as initial bound
     initial_foot_position[i] = p
-    c[i].setInitialGuess(p)
-    c[i].setBounds(p, p, 0)
-
-    # contacts initial velocity is 0
-    cdot[i].setInitialGuess([0., 0., 0.])
-    cdot[i].setBounds([0., 0., 0.], [0., 0., 0.])  # with 0 velocity
-
-    # forces are between -max_max_contact_force and max_max_contact_force (unilaterality is added later)
-    f[i].setBounds([-max_contact_force, -max_contact_force, -max_contact_force], [max_contact_force, max_contact_force, max_contact_force])
-
     i = i + 1
 
 # initialize com state and com velocity
 COM = kindyn.centerOfMass()
 com = COM(q=joint_init)['com']
-r.setInitialGuess(com)
-rdot.setInitialGuess([0., 0., 0.])
-
-# initialize base state and base angular velocity
-o.setInitialGuess(joint_init[3:7])
-w.setInitialGuess([0., 0., 0.])
 
 # weights
 r_tracking_gain = rospy.get_param("r_tracking_gain", 1e3)
@@ -200,11 +179,6 @@ for i in range(0, nc):
     cdot_switch[i] = prb.createParameter("cdot_switch" + str(i), 1)
     cdot_switch[i].assign(1., nodes=range(0, ns + 1))
 
-# create constraints
-r.setBounds(com, com, 0)
-rdot.setBounds([0., 0., 0.], [0., 0., 0.], 0)
-o.setBounds(joint_init[3:7], joint_init[3:7], 0)
-w.setBounds([0., 0., 0.], [0., 0., 0.], 0)
 
 # contact position constraints
 if contact_model > 1:
@@ -225,7 +199,7 @@ for i in range(0, nc):
     prb.createConstraint("cdotxy_tracking" + str(i), cdot_switch[i] * cdot[i][0:2])
 
 # create cost function terms
-prb.createResidual("rz_tracking",   np.sqrt(r_tracking_gain)    * (r[2] - com[2]),                       nodes=range(1, ns+1))
+prb.createResidual("rz_tracking",   np.sqrt(r_tracking_gain)    * (r[2] - com[2]), nodes=range(1, ns+1))
 oref = prb.createParameter("oref", 4)
 oref.assign(utilities.quat_inverse(np.array([0., 0., 0., 1.])))
 quat_error = cs.vcat(utils.quaterion_product(o, oref))
@@ -247,22 +221,22 @@ for i in range(0, nc):
 max_iteration = rospy.get_param("max_iteration", 20)
 print(f"max_iteration: {max_iteration}")
 
-initial_state = np.array([0.,    -0.15, 0.88,
+initial_state = np.array([float(com[0]), float(com[1]), float(com[2]),
                           0.,     0.,   0.,   1.,
-                          0.115,  0.,   0.,
-                         -0.095,  0.,   0.,
-                          0.115, -0.3,  0.,
-                         -0.095, -0.3,  0.,
+                          float(initial_foot_position[0][0]),  float(initial_foot_position[0][1]),   float(initial_foot_position[0][2]),
+                          float(initial_foot_position[1][0]),  float(initial_foot_position[1][1]),   float(initial_foot_position[1][2]),
+                          float(initial_foot_position[2][0]),  float(initial_foot_position[2][1]),   float(initial_foot_position[2][2]),
+                          float(initial_foot_position[3][0]),  float(initial_foot_position[3][1]),   float(initial_foot_position[3][2]),
                           0.,     0.,   0.,
                           0.,     0.,   0.,
                           0.,     0.,   0.,
                           0.,     0.,   0.,
                           0.,     0.,   0.,
                           0.,     0.,   0.])
-static_input = np.array([0., 0., 0., 0., 0., m * 9,81 / force_scaling / 4,
-                         0., 0., 0., 0., 0., m * 9,81 / force_scaling / 4,
-                         0., 0., 0., 0., 0., m * 9,81 / force_scaling / 4,
-                         0., 0., 0., 0., 0., m * 9,81 / force_scaling / 4])
+static_input = np.array([0., 0., 0., 0., 0., m * 9.81 / force_scaling / 4,
+                         0., 0., 0., 0., 0., m * 9.81 / force_scaling / 4,
+                         0., 0., 0., 0., 0., m * 9.81 / force_scaling / 4,
+                         0., 0., 0., 0., 0., m * 9.81 / force_scaling / 4])
 
 rospy.init_node('srbd_mpc_test', anonymous=True)
 
@@ -303,7 +277,7 @@ simulation_euler_integrator = integrators.EULER(dae)
 
 # Walking patter generator and scheduler
 wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, w_ref, orientation_tracking_gain, cdot_switch, ns, number_of_legs=2,
-                      contact_model=contact_model, max_force=max_contact_force, max_velocity=max_contact_velocity)
+                      contact_model=contact_model)
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 while not rospy.is_shutdown():
 
