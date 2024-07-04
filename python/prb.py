@@ -244,3 +244,198 @@ class SRBDProblem:
                          0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4,
                          0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4,
                          0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4])
+
+class LIPProblem:
+    def __init__(self):
+        None
+
+    def createLIPProblem(self, ns, T):
+        prb = problem.Problem(ns, casadi_type=cs.SX)
+
+        urdf = rospy.get_param("robot_description", "")
+        if urdf == "":
+            print("robot_description not loaded in param server!")
+            exit()
+
+        kindyn = cas_kin_dyn.CasadiKinDyn(urdf)
+
+        # create variables
+
+        r = prb.createStateVariable("r", 3)  # com position
+        q = variables.Aggregate()  # position aggregate
+        q.addVariable(r)
+
+        # contacts position
+        contact_model = rospy.get_param("contact_model", 4)
+        number_of_legs = rospy.get_param("number_of_legs", 2)
+        nc = number_of_legs * contact_model
+
+        c = dict()
+        for i in range(0, nc):
+            c[i] = prb.createStateVariable("c" + str(i), 3)  # Contact i position
+            q.addVariable(c[i])
+
+        # variables
+        rdot = prb.createStateVariable("rdot", 3)  # com velocity
+        qdot = variables.Aggregate()  # velocity aggregate
+        qdot.addVariable(rdot)
+
+        # contacts velocity
+        cdot = dict()
+        for i in range(0, nc):
+            cdot[i] = prb.createStateVariable("cdot" + str(i), 3)  # Contact i vel
+            qdot.addVariable(cdot[i])
+
+        # variable to collect all acceleration controls
+        qddot = variables.Aggregate()
+
+        z = prb.createInputVariable("z", 3)  # zmp position
+        cddot = dict()
+        for i in range(0, nc):
+            cddot[i] = prb.createInputVariable("cddot" + str(i), 3)  # Contact i acc
+
+        # references
+        rdot_ref = prb.createParameter('rdot_ref', 3)
+        rdot_ref.assign([0., 0., 0.], nodes=range(1, ns + 1))
+
+        # Formulate discrete time dynamics using multiple_shooting and RK2 integrator
+        # joint_init is used to initialize the urdf model and retrieve information such as: CoM, Inertia, atc...
+        # at the nominal configuration given by joint_init
+
+        joint_init = rospy.get_param("joint_init")
+        if len(joint_init) == 0:
+            print("joint_init parameter is mandatory, exiting...")
+            exit()
+
+        if rospy.has_param("world_frame_link"):
+            world_frame_link = rospy.get_param("world_frame_link")
+            utilities.setWorld(world_frame_link, kindyn, joint_init)
+            print(f"world_frame_link: {world_frame_link}")
+
+        m = kindyn.mass()
+        force_scaling = 1000.
+        eta2 = 9.81 / 0.88
+        lip_dynamics = eta2 * (r - z) - cs.DM([0., 0., 9.81])
+        rddot = lip_dynamics
+
+        #self.RDDOT = cs.Function('rddot', [prb.getInput().getVars()], [rddot])
+
+        qddot.addVariable(rddot)
+        for i in range(0, nc):
+            qddot.addVariable(cddot[i])
+        print(q.getVars())
+        print(qdot.getVars())
+        xdot = utils.double_integrator(q.getVars(), qdot.getVars(), qddot.getVars())
+        prb.setDynamics(xdot)
+        prb.setDt(T / ns)
+
+        # foot_frames parameters are used to retrieve initial position of the contacts given the initial pose of the robot.
+        # note: the order of the contacts state/control variable is the order in which these contacts are set in the param server
+
+        foot_frames = rospy.get_param("foot_frames")
+        if len(foot_frames) == 0:
+            print("foot_frames parameter is mandatory, exiting...")
+            exit()
+        if (len(foot_frames) != nc):
+            print(f"foot frames number should match number of contacts! {len(foot_frames)} != {nc}")
+            exit()
+        print(f"foot_frames: {foot_frames}")
+
+        i = 0
+        initial_foot_position = dict()
+        for frame in foot_frames:
+            FK = kindyn.fk(frame)
+            p = FK(q=joint_init)['ee_pos']
+            print(f"{frame}: {p}")
+            # storing initial foot_position and setting as initial bound
+            initial_foot_position[i] = p
+            i = i + 1
+
+        # initialize com state and com velocity
+        COM = kindyn.centerOfMass()
+        com = COM(q=joint_init)['com']
+
+        # weights
+        r_tracking_gain = rospy.get_param("r_tracking_gain", 1e3)
+        rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 1e4)
+        zmp_tracking_gain = rospy.get_param("zmp_tracking_gain", 1e3)
+        rel_pos_gain = rospy.get_param("rel_position_gain", 1e4)
+        min_qddot_gain = rospy.get_param("min_qddot_gain", 1e0)
+
+        # fixme: where do these come from?
+        d_initial_1 = -(initial_foot_position[0][0:2] - initial_foot_position[2][0:2])
+        d_initial_2 = -(initial_foot_position[1][0:2] - initial_foot_position[3][0:2])
+        
+        # create contact reference and contact switch
+        c_ref = dict()
+        cdot_switch = dict()
+        for i in range(0, nc):
+            c_ref[i] = prb.createParameter("c_ref" + str(i), 1)
+            c_ref[i].assign(initial_foot_position[i][2], nodes=range(0, ns + 1))
+            cdot_switch[i] = prb.createParameter("cdot_switch" + str(i), 1)
+            cdot_switch[i].assign(1., nodes=range(0, ns + 1))
+
+        # contact position constraints
+        if contact_model > 1:
+            for i in range(1, contact_model):
+                prb.createConstraint("relative_vel_left_" + str(i), cdot[0][0:2] - cdot[i][0:2])
+            for i in range(contact_model + 1, 2 * contact_model):
+                prb.createConstraint("relative_vel_right_" + str(i), cdot[contact_model][0:2] - cdot[i][0:2])
+
+        for i in range(0, nc):
+            prb.createConstraint("cz_tracking" + str(i), c[i][2] - c_ref[i])
+            prb.createConstraint("cdotxy_tracking" + str(i), cdot_switch[i] * cdot[i][0:2])
+
+        # create cost function terms
+        prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
+        prb.createResidual("rxy_tracking", np.sqrt(r_tracking_gain) * (r[:2] - (c[0]+c[1]+c[2]+c[3])[:2] * 0.25), nodes=range(1, ns + 1))
+        prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
+        prb.createResidual("zmp_tracking", np.sqrt(zmp_tracking_gain) * (z - (c[0]+c[1]+c[2]+c[3]) * 0.25), nodes=range(0, ns))
+        prb.createResidual("rel_pos_y_1_4", np.sqrt(rel_pos_gain) * (-c[0][1] + c[2][1] - d_initial_1[1]),
+                           nodes=range(1, ns + 1))
+        prb.createResidual("rel_pos_x_1_4", np.sqrt(rel_pos_gain) * (-c[0][0] + c[2][0] - d_initial_1[0]),
+                           nodes=range(1, ns + 1))
+        prb.createResidual("rel_pos_y_3_6", np.sqrt(rel_pos_gain) * (-c[1][1] + c[3][1] - d_initial_2[1]),
+                           nodes=range(1, ns + 1))
+        prb.createResidual("rel_pos_x_3_6", np.sqrt(rel_pos_gain) * (-c[1][0] + c[3][0] - d_initial_2[0]),
+                           nodes=range(1, ns + 1))
+        prb.createResidual("min_qddot", np.sqrt(min_qddot_gain) * (qddot.getVars()), nodes=range(0, ns))
+
+        self.prb = prb
+        self.initial_foot_position = initial_foot_position
+        self.com = com
+        self.force_scaling = force_scaling
+        self.m = m
+        self.c = c
+        self.cdot = cdot
+        self.c_ref = c_ref
+        self.cdot_switch = cdot_switch
+        self.contact_model = contact_model
+        self.rdot_ref = rdot_ref
+        self.nc = nc
+
+        print(prb.getState().getVars())
+        print(prb.getInput().getVars())
+
+    def getInitialState(self):
+        return np.array([float(self.com[0]), float(self.com[1]), float(self.com[2]),
+                         float(self.initial_foot_position[0][0]), float(self.initial_foot_position[0][1]),
+                         float(self.initial_foot_position[0][2]),
+                         float(self.initial_foot_position[1][0]), float(self.initial_foot_position[1][1]),
+                         float(self.initial_foot_position[1][2]),
+                         float(self.initial_foot_position[2][0]), float(self.initial_foot_position[2][1]),
+                         float(self.initial_foot_position[2][2]),
+                         float(self.initial_foot_position[3][0]), float(self.initial_foot_position[3][1]),
+                         float(self.initial_foot_position[3][2]),
+                         0., 0., 0.,
+                         0., 0., 0.,
+                         0., 0., 0.,
+                         0., 0., 0.,
+                         0., 0., 0.])
+
+    def getStaticInput(self):
+        return np.array([float(self.com[0]), float(self.com[1]), 0.,
+                         0., 0., 0.,
+                         0., 0., 0.,
+                         0., 0., 0.,
+                         0., 0., 0.])
