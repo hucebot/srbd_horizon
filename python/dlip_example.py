@@ -79,7 +79,7 @@ dae["x"] = cs.vertcat(lip.prb.getState().getVars())
 dae["ode"] = lip.prb.getDynamics()
 dae["p"] = cs.vertcat(lip.prb.getInput().getVars())
 dae["quad"] = 0.
-simulation_euler_integrator = integrators.EULER(dae)
+simulation_euler_integrator = solver.get_f(0)
 
 # Walking patter generator and scheduler
 wpg = wpg.steps_phase(srbd.f, lip.c, lip.cdot, lip.initial_foot_position[0][2].__float__(), lip.c_ref, srbd.w_ref, srbd.orientation_tracking_gain, lip.cdot_switch, ns, number_of_legs=2,
@@ -107,6 +107,13 @@ while not rospy.is_shutdown():
     # shift reference velocities back by one node
     for j in range(1, ns + 1):
         lip.rdot_ref.assign(lip.rdot_ref.getValues(nodes=j), nodes=j-1)
+        lip.eta2_p.assign(lip.eta2_p.getValues(nodes=j), nodes=j-1)
+
+    if lip.cdot_switch[0].getValues(ns) == 0 and lip.cdot_switch[1].getValues(ns) == 0 and lip.cdot_switch[2].getValues(ns) == 0 and lip.cdot_switch[3].getValues(ns) == 0:
+        lip.eta2_p.assign(0., nodes=ns)
+    else:
+        lip.eta2_p.assign(lip.eta2, nodes=ns)
+
 
     # assign new references based on user input
     if motion == "standing":
@@ -145,27 +152,33 @@ while not rospy.is_shutdown():
 
     t = rospy.Time().now()
     utilities.SRBDTfBroadcaster(solution['r'][:, 0], np.array([0., 0., 0., 1.]), c0_hist, t)
+    utilities.ZMPTfBroadcaster(solution['z'][:, 0], t)
+
+    input = solution["u_opt"][:, 0]
+    state = np.array(cs.DM(simulation_euler_integrator(state, input, solver.get_params_value(0))))
+
+    #print(f"state {state}")
+    #print(f"input {input}")
+    #print(f"solver.get_params_value(0) {solver.get_params_value(0)}")
+    rddot0 = lip.RDDOT(state, input, solver.get_params_value(0))
+    fzmp = lip.m * (np.array([0., 0., 9.81]) + rddot0)
+    viz.publishContactForce(t, fzmp, 'ZMP')
     for i in range(0, lip.nc):
-        viz.publishContactForce(t, lip.force_scaling * np.array([0., 0., 1.]), 'c' + str(i))
         viz.publishPointTrj(solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
     viz.SRBDViewer(srbd.I, "SRB", t, lip.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
     viz.publishPointTrj(solution["r"], t, "SRB", "world")
+    viz.publishPointTrj(solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
 
     cc = dict()
-    ff = dict()
     for i in range(0, lip.nc):
         cc[i] = solution["c" + str(i)][:, 0]
-        ff[i] = lip.force_scaling * np.array([0., 0., 1.])
 
     # simulation integration
-    input = solution["u_opt"][:, 0]
-    state = simulation_euler_integrator(state, input, lip.prb.getDt())[0]
     #print(f"state:", solution["x_opt"])
     #print(f"input:", solution["u_opt"])
     #rddot0 = lip.RDDOT(input)
 
-    print(input[:3])
-    
+
     w_R_b0 = utils.toRot(state[3:7])
     #srbd_0 = kin_dyn.SRBD(lip.m/lip.force_scaling, w_R_b0*lip.I/lip.force_scaling*w_R_b0.T, ff, solution["r"][:, 0], rddot0, cc, solution["w"][:, 0], wdot0)
     srbd_msg.header.stamp = t

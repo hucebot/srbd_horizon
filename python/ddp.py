@@ -7,6 +7,9 @@ from typing import Dict
 import casadi as cs
 import numpy as np
 
+
+def parameterized_euler(ode, state, dt):
+    return state + dt * ode
 class DDPSolver(Solver):
     def __init__(self, prb: Problem, opts: Dict) -> None:
         super().__init__(prb, opts=opts)
@@ -123,8 +126,6 @@ class DDPSolver(Solver):
         self.ddp_solver.set_initial_state(x0)
 
     def _createVarSolDict(self, x, u):
-        #print(f"state_size: {self.state_size}")
-        #print(f"input_size: {self.input_size}")
         #Each variable is a matrix in a dict, vars x nodes
         var_sol_dict = dict()
         var_size_acc = 0
@@ -133,20 +134,13 @@ class DDPSolver(Solver):
         for var in self.prb.var_container.getVarList(offset=False):
             var_size_acc = var_size_acc + var.size()[0]
             if var_size_acc <= self.state_size:
-                #print(f"var.size()[0]: {var.size()[0]}")
-                #print(f"pos_x: {pos_x}")
-                #print(f"var_size_acc: {var_size_acc}")
                 val_sol_matrix = x[pos_x:var_size_acc, :]
                 var_sol_dict[var.getName()] = val_sol_matrix
                 pos_x = var_size_acc
             else:
-                #print(f"var.size()[0]: {var.size()[0]}")
-                #print(f"pos_u: {pos_u}")
-                #print(f"var_size_acc: {var_size_acc - pos_x}")
                 val_sol_matrix = u[pos_u:var_size_acc - pos_x, :]
                 var_sol_dict[var.getName()] = val_sol_matrix
                 pos_u = var_size_acc - pos_x
-            #print(f"{var.getName()}: {var_sol_dict[var.getName()]}")
 
         return var_sol_dict
 
@@ -226,5 +220,8 @@ class DDPSolver(Solver):
                                              cs.vcat(list(self.param_var.values()))], [cost])
 
     def get_f(self, node):
-        EULER = integrators.EULER(self.dae)
-        return cs.Function("f" + str(node), [cs.vertcat(self.state_var), cs.vertcat(self.input_var)], [EULER(cs.vertcat(self.state_var), cs.vertcat(self.input_var), self.prb.getDt())[0]])
+        state = cs.vertcat(self.state_var)
+        input = cs.vertcat(self.input_var)
+        params = cs.vcat(list(self.param_var.values()))
+        return cs.Function("f" + str(node), [state, input, params], [parameterized_euler(self.dae["ode"], state, self.prb.getDt())])
+

@@ -9,6 +9,10 @@ def SRBDTfBroadcaster(r, o, c_dict, t):
     for key, val in c_dict.items():
         br.sendTransform(val, [0., 0., 0., 1.], t, key, "world")
 
+def ZMPTfBroadcaster(zmp, t):
+    br = tf.TransformBroadcaster()
+    br.sendTransform(zmp, [0., 0., 0., 1.], t, "ZMP", "world")
+
 def setWorld(frame, kindyn, q, base_link="base_link"):
     FRAME = kindyn.fk(frame)
     w_p_f = FRAME(q=q)['ee_pos']

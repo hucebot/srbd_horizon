@@ -312,17 +312,22 @@ class LIPProblem:
             utilities.setWorld(world_frame_link, kindyn, joint_init)
             print(f"world_frame_link: {world_frame_link}")
 
+        # initialize com state and com velocity
+        COM = kindyn.centerOfMass()
+        com = COM(q=joint_init)['com']
+
         m = kindyn.mass()
-        force_scaling = 1000.
-        eta2 = 9.81 / 0.88
-        lip_dynamics = eta2 * (r - z) - cs.DM([0., 0., 9.81])
+        eta2 = 9.81 / com[2]
+        eta2_p = prb.createParameter("eta", 1)
+        eta2_p.assign(eta2)
+        lip_dynamics = eta2_p * (r - z) - cs.DM([0., 0., 9.81])
         rddot = lip_dynamics
 
-        #self.RDDOT = cs.Function('rddot', [prb.getInput().getVars()], [rddot])
-
         qddot.addVariable(rddot)
+        cddots = variables.Aggregate()
         for i in range(0, nc):
             qddot.addVariable(cddot[i])
+            cddots.addVariable(cddot[i])
         print(q.getVars())
         print(qdot.getVars())
         xdot = utils.double_integrator(q.getVars(), qdot.getVars(), qddot.getVars())
@@ -351,16 +356,14 @@ class LIPProblem:
             initial_foot_position[i] = p
             i = i + 1
 
-        # initialize com state and com velocity
-        COM = kindyn.centerOfMass()
-        com = COM(q=joint_init)['com']
+
 
         # weights
-        r_tracking_gain = rospy.get_param("r_tracking_gain", 1e3)
+        r_tracking_gain = rospy.get_param("r_tracking_gain", 1e5)
         rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 1e4)
-        zmp_tracking_gain = rospy.get_param("zmp_tracking_gain", 1e3)
+        zmp_tracking_gain = rospy.get_param("zmp_tracking_gain", 1e5) #1e3 in double support
         rel_pos_gain = rospy.get_param("rel_position_gain", 1e4)
-        min_qddot_gain = rospy.get_param("min_qddot_gain", 1e0)
+        min_cddot_gain = rospy.get_param("min_cddot_gain", 1e0)
 
         # fixme: where do these come from?
         d_initial_1 = -(initial_foot_position[0][0:2] - initial_foot_position[2][0:2])
@@ -390,7 +393,13 @@ class LIPProblem:
         prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
         prb.createResidual("rxy_tracking", np.sqrt(r_tracking_gain) * (r[:2] - (c[0]+c[1]+c[2]+c[3])[:2] * 0.25), nodes=range(1, ns + 1))
         prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
-        prb.createResidual("zmp_tracking", np.sqrt(zmp_tracking_gain) * (z - (c[0]+c[1]+c[2]+c[3]) * 0.25), nodes=range(0, ns))
+
+        prb.createResidual("zmp_tracking_xy", np.sqrt(zmp_tracking_gain) * (z[0:2] - (cdot_switch[0]*c[0][0:2] +
+                                                                              cdot_switch[1]*c[1][0:2] + cdot_switch[2]*c[2][0:2] +
+                                                                              cdot_switch[3]*c[3][0:2]) / (sum(cdot_switch.values()) + 1e-2)), nodes=range(0, ns))
+
+        prb.createResidual("zmp_tracking_z", np.sqrt(1e0) * z[2], nodes=range(0, ns))
+
         prb.createResidual("rel_pos_y_1_4", np.sqrt(rel_pos_gain) * (-c[0][1] + c[2][1] - d_initial_1[1]),
                            nodes=range(1, ns + 1))
         prb.createResidual("rel_pos_x_1_4", np.sqrt(rel_pos_gain) * (-c[0][0] + c[2][0] - d_initial_1[0]),
@@ -399,12 +408,11 @@ class LIPProblem:
                            nodes=range(1, ns + 1))
         prb.createResidual("rel_pos_x_3_6", np.sqrt(rel_pos_gain) * (-c[1][0] + c[3][0] - d_initial_2[0]),
                            nodes=range(1, ns + 1))
-        prb.createResidual("min_qddot", np.sqrt(min_qddot_gain) * (qddot.getVars()), nodes=range(0, ns))
+        prb.createResidual("min_cddot", np.sqrt(min_cddot_gain) * (cddots.getVars()), nodes=range(0, ns))
 
         self.prb = prb
         self.initial_foot_position = initial_foot_position
         self.com = com
-        self.force_scaling = force_scaling
         self.m = m
         self.c = c
         self.cdot = cdot
@@ -413,9 +421,10 @@ class LIPProblem:
         self.contact_model = contact_model
         self.rdot_ref = rdot_ref
         self.nc = nc
-
-        print(prb.getState().getVars())
-        print(prb.getInput().getVars())
+        self.eta2 = eta2
+        self.eta2_p = eta2_p
+        self.RDDOT = cs.Function('rddot', [prb.getState().getVars(), prb.getInput().getVars(),
+                                           cs.vcat(list(prb.getParameters().values()))], [rddot])
 
     def getInitialState(self):
         return np.array([float(self.com[0]), float(self.com[1]), float(self.com[2]),

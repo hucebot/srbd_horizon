@@ -2,11 +2,11 @@ from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point, WrenchStamped
 import rospy
 
-def publishPointTrj(points, t, name, frame, color = [0.7, 0.7, 0.7]):
+def publishPointTrj(points, t, name, frame, color = [0.7, 0.7, 0.7], namespace="SRBD"):
     marker = Marker()
     marker.header.frame_id = frame
     marker.header.stamp = t
-    marker.ns = "SRBD"
+    marker.ns = namespace
     marker.id = 1000
     marker.type = Marker.LINE_STRIP
     marker.action = Marker.ADD

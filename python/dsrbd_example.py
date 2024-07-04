@@ -73,7 +73,7 @@ dae["x"] = cs.vertcat(srbd.prb.getState().getVars())
 dae["ode"] = srbd.prb.getDynamics()
 dae["p"] = cs.vertcat(srbd.prb.getInput().getVars())
 dae["quad"] = 0.
-simulation_euler_integrator = integrators.EULER(dae)
+simulation_euler_integrator = solver.get_f(0)
 
 # Walking patter generator and scheduler
 wpg = wpg.steps_phase(srbd.f, srbd.c, srbd.cdot, srbd.initial_foot_position[0][2].__float__(), srbd.c_ref, srbd.w_ref, srbd.orientation_tracking_gain, srbd.cdot_switch, ns, number_of_legs=2,
@@ -156,7 +156,7 @@ while not rospy.is_shutdown():
 
     # simulation integration
     input = solution["u_opt"][:, 0]
-    state = simulation_euler_integrator(state, input, srbd.prb.getDt())[0]
+    state = np.array(cs.DM(simulation_euler_integrator(state, input, cs.vcat(list(srbd.prb.getParameters().values())))))
     state[3:7] /= cs.norm_2(state[3:7])
     #print(f"state:", solution["x_opt"])
     #print(f"input:", solution["u_opt"])
