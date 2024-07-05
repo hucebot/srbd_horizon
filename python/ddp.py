@@ -106,7 +106,7 @@ class DDPSolver(Solver):
         self.var_solution['x_opt'] = x
         self.var_solution['u_opt'] = u
 
-        return self.ddp_solver.is_converged()
+        
 
     def is_equality_constraint(self, constr):
         upper = np.array(constr.getUpperBounds())

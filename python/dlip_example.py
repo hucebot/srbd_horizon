@@ -70,8 +70,6 @@ for i in range(0, ns):
     u_warmstart[:, i] = lip.getStaticInput()
 
 np.set_printoptions(suppress=True)
-print(lip.getInitialState())
-print(lip.getStaticInput())
 
 #define discrete dynamics
 dae = dict()
