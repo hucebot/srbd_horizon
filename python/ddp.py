@@ -6,6 +6,65 @@ from horizon.variables import Parameter
 from typing import Dict
 import casadi as cs
 import numpy as np
+import pyddp
+class MetaSolver(Solver):
+    def __init__(self, prb: Problem, opts: Dict) -> None:
+        super().__init__(prb, opts=opts)
+
+        self.solvers = list()
+        self.mapping_functions = list()
+        self.meta_solver = pyddp.MetaSolver()
+
+        self.state_var = prb.getState().getVars()
+        self.state_size = self.state_var.size()[0]
+    def add(self, DDPSolver, mapping_function):
+        self.solvers.append(DDPSolver)
+        self.mapping_functions.append(mapping_function)
+        self.meta_solver.add(DDPSolver.ddp_solver, mapping_function)
+
+    def setInitialState(self, initial_state):
+        self.meta_solver.set_initial_state(initial_state)
+    def solve(self) -> bool:
+        params = list()
+        for solver in self.solvers:
+            for node in range(0, solver.prb.nodes):
+                solver.param_values_list[node] = solver.get_params_value(node)
+            params.append(solver.param_values_list)
+
+        self.X, self.U = self.meta_solver.solve(params)
+
+        self.var_solution = self._createVarSolDict(self.solvers[0].prb, self.X[0], self.U[0], self.state_size)
+        self.var_solution['x_opt'] = self.X[0]
+        self.var_solution['u_opt'] = self.U[0]
+
+    def _createVarSolDict(self, prb, x, u, state_size):
+        #Each variable is a matrix in a dict, vars x nodes
+        var_sol_dict = dict()
+        var_size_acc = 0
+        pos_x = 0
+        pos_u = 0
+        for var in prb.var_container.getVarList(offset=False):
+            var_size_acc = var_size_acc + var.size()[0]
+            if var_size_acc <= state_size:
+                val_sol_matrix = x[pos_x:var_size_acc, :]
+                var_sol_dict[var.getName()] = val_sol_matrix
+                pos_x = var_size_acc
+            else:
+                val_sol_matrix = u[pos_u:var_size_acc - pos_x, :]
+                var_sol_dict[var.getName()] = val_sol_matrix
+                pos_u = var_size_acc - pos_x
+
+        return var_sol_dict
+
+    def getSolutionDict(self):
+        return self.var_solution
+
+    def getSolutionModel(self, i):
+        var_solution = self._createVarSolDict(self.solvers[i].prb, self.X[i], self.U[i], self.solvers[i].state_size)
+        var_solution['x_opt'] = self.X[i]
+        var_solution['u_opt'] = self.U[i]
+        return var_solution
+
 
 
 def parameterized_euler(ode, state, dt):
@@ -224,4 +283,6 @@ class DDPSolver(Solver):
         input = cs.vertcat(self.input_var)
         params = cs.vcat(list(self.param_var.values()))
         return cs.Function("f" + str(node), [state, input, params], [parameterized_euler(self.dae["ode"], state, self.prb.getDt())])
+
+
 

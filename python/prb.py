@@ -183,8 +183,16 @@ class SRBDProblem:
         # create cost function terms
         prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
         oref = prb.createParameter("oref", 4)
-        oref.assign(utilities.quat_inverse(np.array([0., 0., 0., 1.])))
-        quat_error = cs.vcat(utils.quaterion_product(o, oref))
+
+        oref.assign(np.array([0., 0., 0., 1.]))
+        oi = cs.vcat([-o[0], -o[1], -o[2], o[3]])
+        quat_error = cs.vcat(utils.quaterion_product(oref, oi))
+        #print(oref)
+        #print(quat_error)
+
+        #oref.assign(utilities.quat_inverse(np.array([0., 0., 0., 1.])))
+        #quat_error = cs.vcat(utils.quaterion_product(o, oref))
+
         prb.createResidual("o_tracking_xyz", orientation_tracking_gain * quat_error[0:3], nodes=range(1, ns + 1))
         prb.createResidual("o_tracking_w", orientation_tracking_gain * (quat_error[3] - 1.), nodes=range(1, ns + 1))
         prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
@@ -390,9 +398,9 @@ class LIPProblem:
             prb.createConstraint("cdotxy_tracking" + str(i), cdot_switch[i] * cdot[i][0:2])
 
         # create cost function terms
-        prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
-        prb.createResidual("rxy_tracking", np.sqrt(r_tracking_gain) * (r[:2] - (c[0]+c[1]+c[2]+c[3])[:2] * 0.25), nodes=range(1, ns + 1))
-        prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
+        prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(0, ns + 1))
+        prb.createResidual("rxy_tracking", np.sqrt(r_tracking_gain) * (r[:2] - (c[0]+c[1]+c[2]+c[3])[:2] * 0.25), nodes=range(0, ns + 1))
+        prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(0, ns + 1))
 
         prb.createResidual("zmp_tracking_xy", np.sqrt(zmp_tracking_gain) * (z[0:2] - (cdot_switch[0]*c[0][0:2] +
                                                                               cdot_switch[1]*c[1][0:2] + cdot_switch[2]*c[2][0:2] +
@@ -401,13 +409,13 @@ class LIPProblem:
         prb.createResidual("zmp_tracking_z", np.sqrt(1e0) * z[2], nodes=range(0, ns))
 
         prb.createResidual("rel_pos_y_1_4", np.sqrt(rel_pos_gain) * (-c[0][1] + c[2][1] - d_initial_1[1]),
-                           nodes=range(1, ns + 1))
+                           nodes=range(0, ns + 1))
         prb.createResidual("rel_pos_x_1_4", np.sqrt(rel_pos_gain) * (-c[0][0] + c[2][0] - d_initial_1[0]),
-                           nodes=range(1, ns + 1))
+                           nodes=range(0, ns + 1))
         prb.createResidual("rel_pos_y_3_6", np.sqrt(rel_pos_gain) * (-c[1][1] + c[3][1] - d_initial_2[1]),
-                           nodes=range(1, ns + 1))
+                           nodes=range(0, ns + 1))
         prb.createResidual("rel_pos_x_3_6", np.sqrt(rel_pos_gain) * (-c[1][0] + c[3][0] - d_initial_2[0]),
-                           nodes=range(1, ns + 1))
+                           nodes=range(0, ns + 1))
         prb.createResidual("min_cddot", np.sqrt(min_cddot_gain) * (cddots.getVars()), nodes=range(0, ns))
 
         self.prb = prb
