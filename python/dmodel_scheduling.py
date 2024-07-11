@@ -326,6 +326,9 @@ while not rospy.is_shutdown():
     viz.SRBDViewer(srbd.I, "SRB", t, srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
     viz.publishPointTrj(solution["r"], t, "SRB", "world")
 
+    utilities.visualize_horizon([5, 10], solution, srbd.nc, t, srbd.I)
+    Inertia = srbd.I[0, 0] * np.identity(3)
+    utilities.visualize_horizon([0, 5, 10], lip_solution, srbd.nc, t, Inertia, body_name="LIP", off_set=1000)
 
     cc = dict()
     ff = dict()

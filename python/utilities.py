@@ -3,11 +3,26 @@ import numpy as np
 import casadi as cs
 from scipy.spatial.transform import Rotation as R
 
-def SRBDTfBroadcaster(r, o, c_dict, t):
+import viz
+
+def visualize_horizon(node_list, solution, nc, t, Inertia, body_name="SRBD", off_set=100):
+    offset = off_set
+    for n in node_list:
+        c0_hist = dict()
+        for i in range(0, nc):
+            c0_hist['c' + str(i) + str(n)] = solution['c' + str(i)][:, n]
+        child = body_name + "_" + str(n)
+        o = [0, 0, 0, 1]
+        if 'o' in solution:
+            o = solution['o'][:, n]
+        SRBDTfBroadcaster(solution['r'][:, n], o, c0_hist, t, child=child)
+        viz.SRBDViewer(Inertia, child, t, nc, id_offset=offset + n, alpha=0.2, contact_node_string=str(n))
+
+def SRBDTfBroadcaster(r, o, c_dict, t, child="SRB", parent="world"):
     br = tf.TransformBroadcaster()
-    br.sendTransform(r,o,t,"SRB","world")
+    br.sendTransform(r, o, t, child, parent)
     for key, val in c_dict.items():
-        br.sendTransform(val, [0., 0., 0., 1.], t, key, "world")
+        br.sendTransform(val, [0., 0., 0., 1.], t, key, parent)
 
 def ZMPTfBroadcaster(zmp, t):
     br = tf.TransformBroadcaster()

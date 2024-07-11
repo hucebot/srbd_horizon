@@ -7,9 +7,9 @@ Panels:
         - /Global Options1
         - /Status1
         - /Grid1
-        - /TF1
+        - /TF1/Frames1
       Splitter Ratio: 0.5
-    Tree Height: 1245
+    Tree Height: 725
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -59,69 +59,107 @@ Visualization Manager:
       Filter (whitelist): ""
       Frame Timeout: 15
       Frames:
-        All Enabled: true
+        All Enabled: false
         SRB:
           Value: true
-        ZMP:
-          Value: true
+        SRBD_10:
+          Value: false
+        SRBD_15:
+          Value: false
+        SRBD_19:
+          Value: false
+        SRBD_5:
+          Value: false
         base_link:
-          Value: true
+          Value: false
         c0:
           Value: true
+        c010:
+          Value: false
+        c015:
+          Value: false
+        c019:
+          Value: false
+        c05:
+          Value: false
         c1:
           Value: true
+        c110:
+          Value: false
+        c115:
+          Value: false
+        c119:
+          Value: false
+        c15:
+          Value: false
         c2:
           Value: true
+        c210:
+          Value: false
+        c215:
+          Value: false
+        c219:
+          Value: false
+        c25:
+          Value: false
         c3:
           Value: true
+        c310:
+          Value: false
+        c315:
+          Value: false
+        c319:
+          Value: false
+        c35:
+          Value: false
         imu_link:
-          Value: true
+          Value: false
         left_foot_lower:
-          Value: true
+          Value: false
         left_foot_lower_left:
-          Value: true
+          Value: false
         left_foot_lower_right:
-          Value: true
+          Value: false
         left_foot_upper:
-          Value: true
+          Value: false
         left_foot_upper_left:
-          Value: true
+          Value: false
         left_foot_upper_right:
-          Value: true
+          Value: false
         left_sole_link:
-          Value: true
+          Value: false
         leg_left_5_link:
-          Value: true
+          Value: false
         leg_left_knee_link:
-          Value: true
+          Value: false
         leg_left_knee_lower_bearing:
-          Value: true
+          Value: false
         leg_left_knee_straight:
-          Value: true
+          Value: false
         leg_right_5_link:
-          Value: true
+          Value: false
         leg_right_knee_link:
-          Value: true
+          Value: false
         leg_right_knee_lower_bearing:
-          Value: true
+          Value: false
         leg_right_knee_straight:
-          Value: true
+          Value: false
         right_foot_lower:
-          Value: true
+          Value: false
         right_foot_lower_left:
-          Value: true
+          Value: false
         right_foot_lower_right:
-          Value: true
+          Value: false
         right_foot_upper:
-          Value: true
+          Value: false
         right_foot_upper_left:
-          Value: true
+          Value: false
         right_foot_upper_right:
-          Value: true
+          Value: false
         right_sole_link:
-          Value: true
+          Value: false
         world:
-          Value: true
+          Value: false
       Marker Alpha: 0.5
       Marker Scale: 0.4000000059604645
       Name: TF
@@ -171,15 +209,53 @@ Visualization Manager:
         world:
           SRB:
             {}
-          ZMP:
+          SRBD_10:
+            {}
+          SRBD_15:
+            {}
+          SRBD_19:
+            {}
+          SRBD_5:
             {}
           c0:
             {}
+          c010:
+            {}
+          c015:
+            {}
+          c019:
+            {}
+          c05:
+            {}
           c1:
+            {}
+          c110:
+            {}
+          c115:
+            {}
+          c119:
+            {}
+          c15:
             {}
           c2:
             {}
+          c210:
+            {}
+          c215:
+            {}
+          c219:
+            {}
+          c25:
+            {}
           c3:
+            {}
+          c310:
+            {}
+          c315:
+            {}
+          c319:
+            {}
+          c35:
             {}
       Update Interval: 0
       Value: true
@@ -396,7 +472,7 @@ Visualization Manager:
       Marker Topic: /ZMP_trj
       Name: Marker
       Namespaces:
-        LIP: true
+        {}
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -419,7 +495,7 @@ Visualization Manager:
       Marker Topic: /COM_trj
       Name: Marker
       Namespaces:
-        LIP: true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -450,7 +526,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 2.1840624809265137
+      Distance: 1.4724174737930298
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -466,17 +542,17 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.3853982090950012
+      Pitch: 0.36039823293685913
       Target Frame: <Fixed Frame>
-      Yaw: 0.29040542244911194
+      Yaw: 1.1604048013687134
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 1536
+  Height: 1016
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd00000004000000000000015600000566fc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000007800000026000000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003b00000566000000c700fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f000004ddfc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d000004dd000000a000fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000009b80000003efc0100000002fb0000000800540069006d00650100000000000009b80000030700fffffffb0000000800540069006d006501000000000000045000000000000000000000085c0000056600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000400000000000001560000035efc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000005fb0000026000000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003b0000035e000000c700fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f000004ddfc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d000004dd000000a000fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007380000003efc0100000002fb0000000800540069006d00650100000000000007380000030700fffffffb0000000800540069006d00650100000000000004500000000000000000000005dc0000035e00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:
@@ -485,6 +561,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: false
-  Width: 2488
-  X: 1992
-  Y: 477
+  Width: 1848
+  X: 72
+  Y: 27

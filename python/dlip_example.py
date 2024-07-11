@@ -163,9 +163,13 @@ while not rospy.is_shutdown():
     viz.publishContactForce(t, fzmp, 'ZMP')
     for i in range(0, lip.nc):
         viz.publishPointTrj(solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-    viz.SRBDViewer(srbd.I, "SRB", t, lip.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
+
+    Inertia = srbd.I[0, 0] * np.identity(3)
+    viz.SRBDViewer(Inertia, "SRB", t, lip.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
     viz.publishPointTrj(solution["r"], t, "SRB", "world")
     viz.publishPointTrj(solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
+
+    utilities.visualize_horizon([5, 10, 15, 19], solution, srbd.nc, t, Inertia)
 
     cc = dict()
     for i in range(0, lip.nc):

@@ -148,6 +148,8 @@ while not rospy.is_shutdown():
     viz.SRBDViewer(srbd.I, "SRB", t, srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
     viz.publishPointTrj(solution["r"], t, "SRB", "world")
 
+    utilities.visualize_horizon([5, 10, 15, 19], solution, srbd.nc, t, srbd.I)
+
     cc = dict()
     ff = dict()
     for i in range(0, srbd.nc):
@@ -183,3 +185,4 @@ while not rospy.is_shutdown():
                t)
 
     rate.sleep()
+
