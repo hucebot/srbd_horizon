@@ -26,7 +26,7 @@ def publishPointTrj(points, t, name, frame, color = [0.7, 0.7, 0.7], namespace="
 
     pub = rospy.Publisher(name + "_trj", Marker, queue_size=10).publish(marker)
 
-def publishContactForce(t, f, frame):
+def publishContactForce(t, f, frame, topic=""):
     f_msg = WrenchStamped()
     f_msg.header.stamp = t
     f_msg.header.frame_id = frame
@@ -34,7 +34,10 @@ def publishContactForce(t, f, frame):
     f_msg.wrench.force.y = f[1]
     f_msg.wrench.force.z = f[2]
     f_msg.wrench.torque.x = f_msg.wrench.torque.y = f_msg.wrench.torque.z = 0.
-    pub = rospy.Publisher('f' + frame, WrenchStamped, queue_size=10).publish(f_msg)
+    if topic == "":
+        pub = rospy.Publisher('f' + frame, WrenchStamped, queue_size=10).publish(f_msg)
+    else:
+        pub = rospy.Publisher(topic, WrenchStamped, queue_size=10).publish(f_msg)
 
 def SRBDViewer(I, base_frame, t, number_of_contacts):
     marker = Marker()
