@@ -13,6 +13,229 @@ from horizon.ros.replay_trajectory import *
 
 import utilities
 
+
+class FullBodyProblem:
+    def __init__(self):
+        None
+
+    def computeTransmissionLegTorques(self, q, J1, J2, transmission_lambda):
+        lj1 = J1(q=q)['J']
+        lj2 = J2(q=q)['J']
+        J = (type(lj1)).zeros(2, lj1.shape[1])
+        J[0, :] = lj2[0, :] - lj1[0, :]
+        J[1, :] = lj2[2, :] - lj1[2, :]
+        return cs.mtimes(J.T, transmission_lambda)
+
+    def kinematicTransmissionConstraintLeg(self, problem, q, qdot, V1, V2):
+        lv1 = V1(q=q, qdot=qdot)['ee_vel_linear']
+        lv2 = V2(q=q, qdot=qdot)['ee_vel_linear']
+        return cs.vcat([lv2[0] - lv1[0], lv2[2] - lv1[2]])
+
+    def createFullBodyProblem(self, ns, T):
+        prb = problem.Problem(ns, casadi_type=cs.SX)
+
+        urdf = rospy.get_param("robot_description", "")
+        kindyn = cas_kin_dyn.CasadiKinDyn(urdf)
+
+        joint_init = rospy.get_param("joint_init")
+        torque_lims = rospy.get_param("torque_lims")
+
+        FK1 = kindyn.fk("base_link")
+        FK2 = kindyn.fk("left_sole_link")
+        p1 = FK1(q=joint_init)['ee_pos']
+        p2 = FK2(q=joint_init)['ee_pos']
+        p = p1 - p2
+        joint_init[0:3] = np.array(p).flatten()
+
+        self.nq = kindyn.nq()
+        self.nv = kindyn.nv()
+
+        # create state
+        q = prb.createStateVariable("q", kindyn.nq())
+        q.setBounds(kindyn.q_min(), kindyn.q_max())
+        q.setBounds(joint_init, joint_init, nodes=0)
+        q.setInitialGuess(joint_init)
+
+        qdot = prb.createStateVariable("qdot", kindyn.nv())
+
+
+        # create input
+        qddot = prb.createInputVariable("qddot", kindyn.nv())
+
+        contact_model = rospy.get_param("contact_model", 4)
+        number_of_legs = rospy.get_param("number_of_legs", 2)
+        nc = number_of_legs * contact_model
+        foot_frames = rospy.get_param("foot_frames")
+        if len(foot_frames) == 0:
+            print("foot_frames parameter is mandatory, exiting...")
+            exit()
+        if (len(foot_frames) != nc):
+            print(f"foot frames number should match number of contacts! {len(foot_frames)} != {nc}")
+            exit()
+        print(f"foot_frames: {foot_frames}")
+
+        f = dict()
+        for foot_frame in foot_frames:
+            f[foot_frame] = prb.createInputVariable("f_" + foot_frame, 3)  # Contact i forces
+
+        left_actuation_lambda = prb.createInputVariable("left_actuation_lambda", 2)
+        right_actuation_lambda = prb.createInputVariable("right_actuation_lambda", 2)
+
+        # Formulate discrete time dynamics
+        x = cs.vertcat(q, qdot)
+        xdot = utils.double_integrator_with_floating_base(q, qdot, qddot)
+        prb.setDynamics(xdot)
+        prb.setDt(T / ns)
+        dae = {'x': x, 'p': qddot, 'ode': xdot, 'quad': 0}
+        F_integrator = integrators.EULER(dae, opts=None)
+
+        # Constraints
+        #1. multiple shooting
+        qddot_prev = qddot.getVarOffset(-1)
+        x_prev = cs.vertcat(q.getVarOffset(-1), qdot.getVarOffset(-1))
+        x_int = F_integrator(x=x_prev, u=qddot_prev, dt=T/ns)
+        prb.createConstraint("multiple_shooting", x_int["f"] - x, nodes=list(range(1, ns + 1)), bounds=dict(lb=np.zeros(kindyn.nv() + kindyn.nq()), ub=np.zeros(kindyn.nv() + kindyn.nq())))
+
+        #2. Torque limits including underactuation (notice: it includes as well the torque limits for the transmission)
+        transmission_frames_left_leg = ["leg_left_length_link", "leg_left_knee_lower_bearing"] # <-- kangaroo related
+        transmission_frames_right_leg = ["leg_right_length_link", "leg_right_knee_lower_bearing"] # <-- kangaroo related
+
+        LJ1 = kindyn.jacobian(transmission_frames_left_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+        LJ2 = kindyn.jacobian(transmission_frames_left_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+        RJ1 = kindyn.jacobian(transmission_frames_right_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+        RJ2 = kindyn.jacobian(transmission_frames_right_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+
+        tau_transmission = self.computeTransmissionLegTorques(q, LJ1, LJ2, left_actuation_lambda) + self.computeTransmissionLegTorques(q, RJ1, RJ2, right_actuation_lambda)
+
+        tau_min = -np.array(torque_lims)
+        tau_max = np.array(torque_lims)
+        tau = kin_dyn.InverseDynamics(kindyn, foot_frames, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED).call(q, qdot, qddot,  f, tau_transmission)
+        prb.createConstraint("inverse_dynamics", tau, nodes=list(range(0, ns)), bounds=dict(lb=tau_min, ub=tau_max))
+
+        #3. kinematic constraints for transmission
+        LV1 = kindyn.frameVelocity(transmission_frames_left_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+        LV2 = kindyn.frameVelocity(transmission_frames_left_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+        RV1 = kindyn.frameVelocity(transmission_frames_right_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+        RV2 = kindyn.frameVelocity(transmission_frames_right_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+        prb.createConstraint("kinematic_transmission_left_leg", self.kinematicTransmissionConstraintLeg(prb, q, qdot, LV1, LV2))
+        prb.createConstraint("kinematic_transmission_right_leg", self.kinematicTransmissionConstraintLeg(prb, q, qdot, RV1, RV2))
+
+        #4. kinematic constraints for the feet + reference
+        c_ref = dict()
+        c = dict()
+        cdot = dict()
+        cdot_switch = dict()
+        initial_foot_position = dict()
+        force_switch_weight = rospy.get_param("force_switch_weight", 1e2)
+        for foot_frame in foot_frames:
+            FK = kindyn.fk(foot_frame)
+            c_foot_frame = FK(q=q)['ee_pos']
+            c[foot_frame] = c_foot_frame
+            c_init = FK(q=joint_init)['ee_pos']
+            initial_foot_position[foot_frame] = c_init
+            c_ref[foot_frame] = prb.createParameter("c_ref_" + foot_frame, 1)
+            c_ref[foot_frame].assign(c_init[2], nodes=range(0, ns + 1))
+            prb.createConstraint("cz_tracking_" + foot_frame, c_foot_frame[2] - c_ref[foot_frame])
+
+            cdot_switch[foot_frame] = prb.createParameter("cdot_switch_" + foot_frame, 1)
+            cdot_switch[foot_frame].assign(1., nodes=range(0, ns + 1))
+            DFK = kindyn.frameVelocity(foot_frame, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
+            cdot_linear = DFK(q=q, qdot=qdot)['ee_vel_linear']
+            cdot[foot_frame] = cdot_linear
+            cdot_angular = DFK(q=q, qdot=qdot)['ee_vel_angular']
+            prb.createConstraint(f"{foot_frame}_cdot_angular", cdot_angular)
+            prb.createConstraint("cdotxy_tracking_" + foot_frame, 1e2 * cdot_switch[foot_frame] * cdot[foot_frame][0:2])
+
+            mu = 0.8  # friction coefficient
+            R = np.identity(3, dtype=float)  # environment rotation wrt inertial frame
+            fc, fc_lb, fc_ub = kin_dyn.linearized_friction_cone(f[foot_frame], mu, R)
+            prb.createIntermediateConstraint(f"{foot_frame}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
+
+            prb.createIntermediateConstraint("f_" + foot_frame + "_active", (1. - cdot_switch[foot_frame]) * f[foot_frame])
+
+
+
+        # Cost function
+        #1. minimize inputs
+
+        prb.createResidual("min_qddot", np.sqrt(1e-3) * qddot, nodes=list(range(0, ns)))
+        for foot_frame in foot_frames:
+            prb.createResidual("min_f_"+foot_frame, np.sqrt(1e-6) * f[foot_frame], nodes=list(range(0, ns)))
+        prb.createResidual("min_left_actuation_lambda", np.sqrt(1e-6) * left_actuation_lambda, nodes=list(range(0, ns)))
+        prb.createResidual("min_right_actuation_lambda", np.sqrt(1e-6) * right_actuation_lambda, nodes=list(range(0, ns)))
+
+        #2 rdot and omega tracking
+        rdot_ref = prb.createParameter('rdot_ref', 3)
+        w_ref = prb.createParameter('w_ref', 3)
+        rdot_ref.assign([0., 0., 0.], nodes=range(1, ns + 1))
+        w_ref.assign([0., 0., 0.], nodes=range(1, ns + 1))
+
+        COM = kindyn.centerOfMass()
+        com = COM(q=joint_init)['com']
+        r = COM(q=q)['com']
+        rdot = COM(q=q, v=qdot)['vcom']
+
+        # create cost function terms
+        r_tracking_gain = rospy.get_param("r_tracking_gain", 1e3)
+        prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
+        oref = prb.createParameter("oref", 4)
+
+        oref.assign(np.array([0., 0., 0., 1.]))
+        oi = cs.vcat([-q[3], -q[4], -q[5], q[6]])
+        quat_error = cs.vcat(utils.quaterion_product(oref, oi))
+
+        orientation_tracking_gain = prb.createParameter('orientation_tracking_gain', 1)
+        orientation_tracking_gain.assign(1e1)
+        prb.createResidual("o_tracking_xyz", orientation_tracking_gain * quat_error[0:3], nodes=range(1, ns + 1))
+        prb.createResidual("o_tracking_w", orientation_tracking_gain * (quat_error[3] - 1.), nodes=range(1, ns + 1))
+        rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 1e4)
+        prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
+        w_tracking_gain = rospy.get_param("w_tracking_gain", 1e4)
+        prb.createResidual("w_tracking", np.sqrt(w_tracking_gain) * (qdot[3:6] - w_ref), nodes=range(1, ns + 1))
+
+        self.prb = prb
+        self.f = f
+        self.q = q
+        self.qdot = qdot
+        self.qddot = qddot
+        self.left_actuation_lambda = left_actuation_lambda
+        self.right_actuation_lambda = right_actuation_lambda
+        self.nc = nc
+        self.foot_frames = foot_frames
+        self.joint_init = joint_init
+        self.m = kindyn.mass()
+        self.kindyn = kindyn
+        self.c = c
+        self.cdot = cdot
+        self.initial_foot_position = initial_foot_position
+        self.c_ref = c_ref
+        self.w_ref = w_ref
+        self.orientation_tracking_gain = orientation_tracking_gain
+        self.contact_model = contact_model
+        self.rdot_ref = rdot_ref
+        self.oref = oref
+        self.cdot_switch = cdot_switch
+
+    def getInitialState(self):
+        return np.concatenate((self.joint_init, np.zeros(self.nv)), axis=0)
+
+    def getStaticInput(self):
+        f = [0., 0., self.m * 9.81 / 4,
+             0., 0., self.m * 9.81 / 4,
+             0., 0., self.m * 9.81 / 4,
+             0., 0., self.m * 9.81 / 4,
+             0., 0., 0., 0.] #<-- 4 contact forces and 4 constraint forces
+        return np.concatenate((np.zeros(self.nv), f), axis=0)
+
+    def getInitialGuess(self):
+        var_list = list()
+        for var in self.prb.var_container.getVarList(offset=False):
+            retriever = var.getInitialGuess()
+            var_list.append(retriever.flatten(order='F'))
+
+        v = cs.vertcat(*var_list)
+        return v
+
 class SRBDProblem:
     def __init__(self):
         None
