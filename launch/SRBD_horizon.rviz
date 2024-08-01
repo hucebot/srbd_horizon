@@ -3,13 +3,9 @@ Panels:
     Help Height: 78
     Name: Displays
     Property Tree Widget:
-      Expanded:
-        - /Global Options1
-        - /Status1
-        - /Grid1
-        - /TF1
+      Expanded: ~
       Splitter Ratio: 0.5
-    Tree Height: 1245
+    Tree Height: 752
   - Class: rviz/Selection
     Name: Selection
   - Class: rviz/Tool Properties
@@ -60,19 +56,7 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
-        SRB:
-          Value: true
-        ZMP:
-          Value: true
         base_link:
-          Value: true
-        c0:
-          Value: true
-        c1:
-          Value: true
-        c2:
-          Value: true
-        c3:
           Value: true
         imu_link:
           Value: true
@@ -90,7 +74,17 @@ Visualization Manager:
           Value: true
         left_sole_link:
           Value: true
+        leg_left_1_link:
+          Value: true
+        leg_left_2_link:
+          Value: true
+        leg_left_3_link:
+          Value: true
+        leg_left_4_link:
+          Value: true
         leg_left_5_link:
+          Value: true
+        leg_left_femur_link:
           Value: true
         leg_left_knee_link:
           Value: true
@@ -98,13 +92,27 @@ Visualization Manager:
           Value: true
         leg_left_knee_straight:
           Value: true
+        leg_left_length_link:
+          Value: true
+        leg_right_1_link:
+          Value: true
+        leg_right_2_link:
+          Value: true
+        leg_right_3_link:
+          Value: true
+        leg_right_4_link:
+          Value: true
         leg_right_5_link:
+          Value: true
+        leg_right_femur_link:
           Value: true
         leg_right_knee_link:
           Value: true
         leg_right_knee_lower_bearing:
           Value: true
         leg_right_knee_straight:
+          Value: true
+        leg_right_length_link:
           Value: true
         right_foot_lower:
           Value: true
@@ -129,58 +137,58 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        base_link:
-          imu_link:
-            {}
-        leg_left_5_link:
-          left_sole_link:
-            left_foot_lower:
-              {}
-            left_foot_lower_left:
-              {}
-            left_foot_lower_right:
-              {}
-            left_foot_upper:
-              {}
-            left_foot_upper_left:
-              {}
-            left_foot_upper_right:
-              {}
-        leg_left_knee_link:
-          leg_left_knee_straight:
-            leg_left_knee_lower_bearing:
-              {}
-        leg_right_5_link:
-          right_sole_link:
-            right_foot_lower:
-              {}
-            right_foot_lower_left:
-              {}
-            right_foot_lower_right:
-              {}
-            right_foot_upper:
-              {}
-            right_foot_upper_left:
-              {}
-            right_foot_upper_right:
-              {}
-        leg_right_knee_link:
-          leg_right_knee_straight:
-            leg_right_knee_lower_bearing:
-              {}
         world:
-          SRB:
-            {}
-          ZMP:
-            {}
-          c0:
-            {}
-          c1:
-            {}
-          c2:
-            {}
-          c3:
-            {}
+          base_link:
+            imu_link:
+              {}
+            leg_left_1_link:
+              leg_left_2_link:
+                leg_left_3_link:
+                  leg_left_femur_link:
+                    leg_left_knee_link:
+                      leg_left_knee_straight:
+                        leg_left_knee_lower_bearing:
+                          {}
+                  leg_left_length_link:
+                    leg_left_4_link:
+                      leg_left_5_link:
+                        left_sole_link:
+                          left_foot_lower:
+                            {}
+                          left_foot_lower_left:
+                            {}
+                          left_foot_lower_right:
+                            {}
+                          left_foot_upper:
+                            {}
+                          left_foot_upper_left:
+                            {}
+                          left_foot_upper_right:
+                            {}
+            leg_right_1_link:
+              leg_right_2_link:
+                leg_right_3_link:
+                  leg_right_femur_link:
+                    leg_right_knee_link:
+                      leg_right_knee_straight:
+                        leg_right_knee_lower_bearing:
+                          {}
+                  leg_right_length_link:
+                    leg_right_4_link:
+                      leg_right_5_link:
+                        right_sole_link:
+                          right_foot_lower:
+                            {}
+                          right_foot_lower_left:
+                            {}
+                          right_foot_lower_right:
+                            {}
+                          right_foot_upper:
+                            {}
+                          right_foot_upper_left:
+                            {}
+                          right_foot_upper_right:
+                            {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -224,21 +232,6 @@ Visualization Manager:
       Name: WrenchStamped
       Queue Size: 10
       Topic: /fc2
-      Torque Arrow Scale: 0.009999999776482582
-      Torque Color: 204; 204; 51
-      Unreliable: false
-      Value: true
-    - Alpha: 1
-      Arrow Width: 0.20000000298023224
-      Class: rviz/WrenchStamped
-      Enabled: true
-      Force Arrow Scale: 0.009999999776482582
-      Force Color: 204; 51; 51
-      Hide Small Values: false
-      History Length: 1
-      Name: WrenchStamped
-      Queue Size: 10
-      Topic: /fc3
       Torque Arrow Scale: 0.009999999776482582
       Torque Color: 204; 204; 51
       Unreliable: false
@@ -298,6 +291,21 @@ Visualization Manager:
       History Length: 1
       Name: WrenchStamped
       Queue Size: 10
+      Topic: /fc3
+      Torque Arrow Scale: 0.009999999776482582
+      Torque Color: 204; 204; 51
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Arrow Width: 0.20000000298023224
+      Class: rviz/WrenchStamped
+      Enabled: true
+      Force Arrow Scale: 0.009999999776482582
+      Force Color: 204; 51; 51
+      Hide Small Values: false
+      History Length: 1
+      Name: WrenchStamped
+      Queue Size: 10
       Topic: /fc7
       Torque Arrow Scale: 0.009999999776482582
       Torque Color: 204; 204; 51
@@ -308,7 +316,7 @@ Visualization Manager:
       Marker Topic: /box
       Name: Marker
       Namespaces:
-        SRBD: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -316,7 +324,7 @@ Visualization Manager:
       Marker Topic: /contacts
       Name: MarkerArray
       Namespaces:
-        SRBD: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -324,7 +332,7 @@ Visualization Manager:
       Marker Topic: /SRB_trj
       Name: Marker
       Namespaces:
-        SRBD: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -332,7 +340,7 @@ Visualization Manager:
       Marker Topic: /c0_trj
       Name: Marker
       Namespaces:
-        SRBD: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -340,7 +348,7 @@ Visualization Manager:
       Marker Topic: /c1_trj
       Name: Marker
       Namespaces:
-        SRBD: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -348,7 +356,7 @@ Visualization Manager:
       Marker Topic: /c2_trj
       Name: Marker
       Namespaces:
-        SRBD: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -356,7 +364,7 @@ Visualization Manager:
       Marker Topic: /c3_trj
       Name: Marker
       Namespaces:
-        SRBD: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -396,7 +404,7 @@ Visualization Manager:
       Marker Topic: /ZMP_trj
       Name: Marker
       Namespaces:
-        LIP: true
+        {}
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -419,9 +427,25 @@ Visualization Manager:
       Marker Topic: /COM_trj
       Name: Marker
       Namespaces:
-        LIP: true
+        {}
       Queue Size: 100
       Value: true
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: false
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+      Name: RobotModel
+      Robot Description: robot_description
+      TF Prefix: ""
+      Update Interval: 0
+      Value: false
+      Visual Enabled: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -450,7 +474,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 2.1840624809265137
+      Distance: 2.937793254852295
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -458,25 +482,25 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -0.19742101430892944
-        Y: -0.171583890914917
-        Z: 0.4579581022262573
+        X: -0.3258458375930786
+        Y: -0.07514436542987823
+        Z: 0.6808017492294312
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.3853982090950012
+      Pitch: 0.30539819598197937
       Target Frame: <Fixed Frame>
-      Yaw: 0.29040542244911194
+      Yaw: 0.34540680050849915
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 1536
+  Height: 1043
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd00000004000000000000015600000566fc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000007800000026000000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003b00000566000000c700fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f000004ddfc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d000004dd000000a000fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000009b80000003efc0100000002fb0000000800540069006d00650100000000000009b80000030700fffffffb0000000800540069006d006501000000000000045000000000000000000000085c0000056600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd00000004000000000000015600000379fc0200000008fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000007800000026000000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073010000003b00000379000000c700fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261000000010000010f000004ddfc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003d000004dd000000a000fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007380000003efc0100000002fb0000000800540069006d00650100000000000007380000030700fffffffb0000000800540069006d00650100000000000004500000000000000000000005dc0000037900000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:
@@ -485,6 +509,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: false
-  Width: 2488
+  Width: 1848
   X: 1992
-  Y: 477
+  Y: 0
