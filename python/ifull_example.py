@@ -14,6 +14,12 @@ import tf
 import viz
 import wpg
 import keyboard
+import casadi as cs
+
+def normalize_quaternion_part_horizon(q, ns):
+    for n in range(ns+1):
+        q[3:7, n] /=  np.linalg.norm(q[3:7, n], ord=2)
+    return q
 
 def joy_cb(msg):
     global joy_msg
@@ -48,7 +54,7 @@ import ddp
 
 opts = {"gnsqp.max_iter": 1,
          'gnsqp.osqp.scaled_termination': True,
-         'gnsqp.eps_regularization': 1e-2}
+         'gnsqp.eps_regularization': 1e-4}
 
 solver = ddp.SQPSolver(full_model.prb, qp_solver_plugin='osqp', opts=opts)
 full_model.q.setInitialGuess(full_model.getInitialState()[0:full_model.nq])
@@ -74,6 +80,7 @@ for foot_frame in full_model.foot_frames:
 
 solver.solve()
 solution = solver.getSolutionDict()
+solution['q'] = normalize_quaternion_part_horizon(solution['q'], ns)
 
 joint_state_msg = JointState()
 joint_state_msg.name = full_model.kindyn.joint_names()[2:]
@@ -165,6 +172,7 @@ while not rospy.is_shutdown():
     solver.solve()
     solution_time_pub.publish(toc())
     solution = solver.getSolutionDict()
+    solution['q'] = normalize_quaternion_part_horizon(solution['q'], ns)
 
     t = rospy.Time.now()
     # publish tf
