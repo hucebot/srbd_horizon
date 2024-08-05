@@ -26,15 +26,15 @@ class FullBodyProblem:
         J[1, :] = lj2[2, :] - lj1[2, :]
         return cs.mtimes(J.T, transmission_lambda)
 
-    def kinematicTransmissionVelocityConstraintLeg(self, problem, q, qdot, V1, V2):
+    def kinematicTransmissionVelocity(self, problem, q, qdot, V1, V2):
         lv1 = V1(q=q, qdot=qdot)['ee_vel_linear']
         lv2 = V2(q=q, qdot=qdot)['ee_vel_linear']
         return cs.vcat([lv2[0] - lv1[0], lv2[2] - lv1[2]])
 
-    def kinematicTransmissionPositionTask(self, problem, q, K, FK1, FK2):
+    def kinematicTransmissionPosition(self, problem, q, FK1, FK2):
         lp1 = FK1(q=q)['ee_pos']
         lp2 = FK2(q=q)['ee_pos']
-        return np.sqrt(K) * (lp2 - lp1)
+        return lp2 - lp1
 
 
     def createFullBodyProblem(self, ns, T):
@@ -123,8 +123,15 @@ class FullBodyProblem:
         LV2 = kindyn.frameVelocity(transmission_frames_left_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV1 = kindyn.frameVelocity(transmission_frames_right_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV2 = kindyn.frameVelocity(transmission_frames_right_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
-        prb.createConstraint("kinematic_transmission_left_leg", self.kinematicTransmissionVelocityConstraintLeg(prb, q, qdot, LV1, LV2))
-        prb.createConstraint("kinematic_transmission_right_leg", self.kinematicTransmissionVelocityConstraintLeg(prb, q, qdot, RV1, RV2))
+        prb.createConstraint("kinematic_transmission_left_leg", self.kinematicTransmissionVelocity(prb, q, qdot, LV1, LV2))
+        prb.createConstraint("kinematic_transmission_right_leg", self.kinematicTransmissionVelocity(prb, q, qdot, RV1, RV2))
+
+        LFK1 = kindyn.fk(transmission_frames_left_leg[0])
+        LFK2 = kindyn.fk(transmission_frames_left_leg[1])
+        RFK1 = kindyn.fk(transmission_frames_right_leg[0])
+        RFK2 = kindyn.fk(transmission_frames_right_leg[1])
+        prb.createConstraint("left_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, LFK1, LFK2))
+        prb.createConstraint("right_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, RFK1, RFK2))
 
         #4. kinematic constraints for the feet + reference
         c_ref = dict()
@@ -165,9 +172,9 @@ class FullBodyProblem:
 
         prb.createResidual("min_qddot", np.sqrt(1e-3) * qddot, nodes=list(range(0, ns)))
         for foot_frame in foot_frames:
-            prb.createResidual("min_f_"+foot_frame, np.sqrt(1e-6) * f[foot_frame], nodes=list(range(0, ns)))
-        prb.createResidual("min_left_actuation_lambda", np.sqrt(1e-6) * left_actuation_lambda, nodes=list(range(0, ns)))
-        prb.createResidual("min_right_actuation_lambda", np.sqrt(1e-6) * right_actuation_lambda, nodes=list(range(0, ns)))
+            prb.createResidual("min_f_"+foot_frame, np.sqrt(1e-4) * f[foot_frame], nodes=list(range(0, ns)))
+        prb.createResidual("min_left_actuation_lambda", np.sqrt(1e-3) * left_actuation_lambda, nodes=list(range(0, ns)))
+        prb.createResidual("min_right_actuation_lambda", np.sqrt(1e-3) * right_actuation_lambda, nodes=list(range(0, ns)))
 
         #2 rdot and omega tracking
         rdot_ref = prb.createParameter('rdot_ref', 3)
@@ -206,13 +213,7 @@ class FullBodyProblem:
         prb.createResidual("relative_pos_y_3_6", 1e2 * (-c[foot_frames[1]][1] + c[foot_frames[3]][1] - d_initial_2[1]))
         prb.createResidual("relative_pos_x_3_6", 1e2 * (-c[foot_frames[1]][0] + c[foot_frames[3]][0] - d_initial_2[0]))
 
-        #4. Kinematic closed loop position
-        LFK1 = kindyn.fk(transmission_frames_left_leg[0])
-        LFK2 = kindyn.fk(transmission_frames_left_leg[1])
-        RFK1 = kindyn.fk(transmission_frames_right_leg[0])
-        RFK2 = kindyn.fk(transmission_frames_right_leg[1])
-        prb.createResidual("left_leg_closed_chain", self.kinematicTransmissionPositionTask(problem, q, 1e4, LFK1, LFK2))
-        prb.createResidual("right_leg_closed_chain", self.kinematicTransmissionPositionTask(problem, q, 1e4, RFK1, RFK2))
+
 
         self.prb = prb
         self.f = f
