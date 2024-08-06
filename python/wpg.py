@@ -26,7 +26,8 @@ class steps_phase:
         ss_duration = int(self.ss_share * self.step_nodes)
         ds_duration = int(self.ds_share * self.step_nodes)
         sin = 0.1 * np.sin(np.linspace(0, np.pi, ))
-        
+
+
         #left step cycle
         self.l_cycle = []
         self.l_cdot_switch = []
@@ -75,6 +76,10 @@ class steps_phase:
             for i in range(0, self.contact_model * self.number_of_legs):
                 self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j-1)
                 self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j-1)
+                if j < self.nodes:
+                    l, u = self.f[i].getBounds(node=j)
+                    self.f[i].setBounds(l, u, nodes=j-1)
+
 
         # fill last node of the contact plan
         if self.action == "step":
@@ -83,20 +88,26 @@ class steps_phase:
             for i in range(0, self.contact_model):
                 self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=self.nodes)
                 self.c_ref[i].assign(self.l_cycle[ref_id], nodes=self.nodes)
+                self.f[i].setBounds(self.l_cdot_switch[ref_id] * -1e4 * np.ones(3),
+                                    self.l_cdot_switch[ref_id] * 1e4 * np.ones(3), nodes=self.nodes-1)
             for i in range(self.contact_model, self.contact_model * self.number_of_legs):
                 self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=self.nodes)
                 self.c_ref[i].assign(self.r_cycle[ref_id], nodes=self.nodes)
+                self.f[i].setBounds(self.r_cdot_switch[ref_id] * -1e4 * np.ones(3),
+                                    self.r_cdot_switch[ref_id] * 1e4 * np.ones(3), nodes=self.nodes-1)
         elif self.action == "jump":
             self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(0., nodes=self.nodes)
             for i in range(0, len(self.c)):
                 self.cdot_switch[i].assign(0., nodes=self.nodes)
+                self.f[i].setBounds(0. * np.ones(3), 0. * np.ones(3), nodes=self.nodes - 1)
         else: # stance
             self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
             for i in range(0, len(self.c)):
                 self.cdot_switch[i].assign(1., nodes=self.nodes)
                 self.c_ref[i].assign(0., nodes=self.nodes)
+                self.f[i].setBounds(-1e4 * np.ones(3), 1e4 * np.ones(3), nodes=self.nodes - 1)
 
         self.step_counter += 1
 

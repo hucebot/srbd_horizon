@@ -171,7 +171,7 @@ class FullBodyProblem:
             R = np.identity(3, dtype=float)  # environment rotation wrt inertial frame
             fc, fc_lb, fc_ub = kin_dyn.linearized_friction_cone(f[foot_frame], mu, R)
             prb.createIntermediateConstraint(f"{foot_frame}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
-            prb.createIntermediateConstraint("f_" + foot_frame + "_active", (1. - cdot_switch[foot_frame]) * f[foot_frame])
+            #prb.createIntermediateConstraint("f_" + foot_frame + "_active", (1. - cdot_switch[foot_frame]) * f[foot_frame])
 
 
         # Cost function
