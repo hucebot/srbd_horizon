@@ -63,10 +63,13 @@ class FullBodyProblem:
         q.setInitialGuess(joint_init)
 
         qdot = prb.createStateVariable("qdot", kindyn.nv())
+        lims = np.ones(kindyn.nv())
+        qdot.setBounds(-100. * lims, 100. * lims)
 
 
         # create input
         qddot = prb.createInputVariable("qddot", kindyn.nv())
+        #qddot.setBounds(-1000. * lims, 1000. * lims)
 
         contact_model = rospy.get_param("contact_model", 4)
         number_of_legs = rospy.get_param("number_of_legs", 2)
@@ -81,11 +84,15 @@ class FullBodyProblem:
         print(f"foot_frames: {foot_frames}")
 
         f = dict()
+        ones3 = np.ones(3)
         for foot_frame in foot_frames:
             f[foot_frame] = prb.createInputVariable("f_" + foot_frame, 3)  # Contact i forces
+            f[foot_frame].setBounds(-1e4 * ones3, 1e4 * ones3)
 
         left_actuation_lambda = prb.createInputVariable("left_actuation_lambda", 2)
+        left_actuation_lambda.setBounds(-1e4 * np.ones(2), 1e4 * np.ones(2))
         right_actuation_lambda = prb.createInputVariable("right_actuation_lambda", 2)
+        right_actuation_lambda.setBounds(-1e4 * np.ones(2), 1e4 * np.ones(2))
 
         # Formulate discrete time dynamics
         x = cs.vertcat(q, qdot)
@@ -157,24 +164,25 @@ class FullBodyProblem:
             cdot[foot_frame] = cdot_linear
             cdot_angular = DFK(q=q, qdot=qdot)['ee_vel_angular']
             prb.createConstraint(f"{foot_frame}_cdot_angular", cdot_angular)
-            prb.createConstraint("cdotxy_tracking_" + foot_frame, 1e2 * cdot_switch[foot_frame] * cdot[foot_frame][0:2])
+            prb.createConstraint("cdotxy_tracking_" + foot_frame, cdot_switch[foot_frame] * cdot[foot_frame][0:2])
+            prb.createResidual("min_cdot_" + foot_frame, 1e-1 * cdot[foot_frame])
 
             mu = 0.8  # friction coefficient
             R = np.identity(3, dtype=float)  # environment rotation wrt inertial frame
             fc, fc_lb, fc_ub = kin_dyn.linearized_friction_cone(f[foot_frame], mu, R)
             prb.createIntermediateConstraint(f"{foot_frame}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
-
             prb.createIntermediateConstraint("f_" + foot_frame + "_active", (1. - cdot_switch[foot_frame]) * f[foot_frame])
 
 
         # Cost function
         #1. minimize inputs
-
         prb.createResidual("min_qddot", np.sqrt(1e-3) * qddot, nodes=list(range(0, ns)))
         for foot_frame in foot_frames:
-            prb.createResidual("min_f_"+foot_frame, np.sqrt(1e-4) * f[foot_frame], nodes=list(range(0, ns)))
-        prb.createResidual("min_left_actuation_lambda", np.sqrt(1e-3) * left_actuation_lambda, nodes=list(range(0, ns)))
-        prb.createResidual("min_right_actuation_lambda", np.sqrt(1e-3) * right_actuation_lambda, nodes=list(range(0, ns)))
+            prb.createResidual("min_f_"+foot_frame, np.sqrt(1e-2) * f[foot_frame], nodes=list(range(0, ns)))
+        # prb.createResidual("min_left_actuation_lambda", np.sqrt(1e-3) * left_actuation_lambda, nodes=list(range(0, ns)))
+        # prb.createResidual("min_right_actuation_lambda", np.sqrt(1e-3) * right_actuation_lambda, nodes=list(range(0, ns)))
+        # prb.createResidual("min_q", np.sqrt(1e-3) * (q - joint_init))
+        # prb.createResidual("min_qdot", np.sqrt(1e-3) * qdot)
 
         #2 rdot and omega tracking
         rdot_ref = prb.createParameter('rdot_ref', 3)
@@ -197,21 +205,21 @@ class FullBodyProblem:
         quat_error = cs.vcat(utils.quaterion_product(oref, oi))
 
         orientation_tracking_gain = prb.createParameter('orientation_tracking_gain', 1)
-        orientation_tracking_gain.assign(1e1)
+        orientation_tracking_gain.assign(1e4)
         prb.createResidual("o_tracking_xyz", orientation_tracking_gain * quat_error[0:3], nodes=range(1, ns + 1))
         prb.createResidual("o_tracking_w", orientation_tracking_gain * (quat_error[3] - 1.), nodes=range(1, ns + 1))
         rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 1e4)
         prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
-        w_tracking_gain = rospy.get_param("w_tracking_gain", 1e4)
+        w_tracking_gain = rospy.get_param("w_tracking_gain", 1e2)
         prb.createResidual("w_tracking", np.sqrt(w_tracking_gain) * (qdot[3:6] - w_ref), nodes=range(1, ns + 1))
 
         #3. Keep feet separated
-        d_initial_1 = -(initial_foot_position[foot_frames[0]][0:2] - initial_foot_position[foot_frames[2]][0:2])
-        prb.createResidual("relative_pos_y_1_4", 1e2 * (-c[foot_frames[0]][1] + c[foot_frames[2]][1] - d_initial_1[1]))
-        prb.createResidual("relative_pos_x_1_4", 1e2 * (-c[foot_frames[0]][0] + c[foot_frames[2]][0] - d_initial_1[0]))
-        d_initial_2 = -(initial_foot_position[foot_frames[1]][0:2] - initial_foot_position[foot_frames[3]][0:2])
-        prb.createResidual("relative_pos_y_3_6", 1e2 * (-c[foot_frames[1]][1] + c[foot_frames[3]][1] - d_initial_2[1]))
-        prb.createResidual("relative_pos_x_3_6", 1e2 * (-c[foot_frames[1]][0] + c[foot_frames[3]][0] - d_initial_2[0]))
+        d_initial_1 = -(initial_foot_position[foot_frames[0]][0:2] - initial_foot_position[foot_frames[4]][0:2])
+        prb.createResidual("relative_pos_y_1_4", 1e2 * (-c[foot_frames[0]][1] + c[foot_frames[4]][1] - d_initial_1[1]))
+        prb.createResidual("relative_pos_x_1_4", 1e2 * (-c[foot_frames[0]][0] + c[foot_frames[4]][0] - d_initial_1[0]))
+        d_initial_2 = -(initial_foot_position[foot_frames[1]][0:2] - initial_foot_position[foot_frames[6]][0:2])
+        prb.createResidual("relative_pos_y_3_6", 1e2 * (-c[foot_frames[3]][1] + c[foot_frames[7]][1] - d_initial_2[1]))
+        prb.createResidual("relative_pos_x_3_6", 1e2 * (-c[foot_frames[3]][0] + c[foot_frames[7]][0] - d_initial_2[0]))
 
 
 
@@ -242,11 +250,15 @@ class FullBodyProblem:
         return np.concatenate((self.joint_init, np.zeros(self.nv)), axis=0)
 
     def getStaticInput(self):
-        f = [0., 0., self.m * 9.81 / 4,
-             0., 0., self.m * 9.81 / 4,
-             0., 0., self.m * 9.81 / 4,
-             0., 0., self.m * 9.81 / 4,
-             0., 0., 0., 0.] #<-- 4 contact forces and 4 constraint forces
+        f = [0., 0., self.m * 9.81 / 8,
+             0., 0., self.m * 9.81 / 8,
+             0., 0., self.m * 9.81 / 8,
+             0., 0., self.m * 9.81 / 8,
+             0., 0., self.m * 9.81 / 8,
+             0., 0., self.m * 9.81 / 8,
+             0., 0., self.m * 9.81 / 8,
+             0., 0., self.m * 9.81 / 8,
+             0., 0., 0., 0.] #<-- 8 contact forces and 4 constraint forces
         return np.concatenate((np.zeros(self.nv), f), axis=0)
 
     def getInitialGuess(self):

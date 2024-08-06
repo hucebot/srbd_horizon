@@ -25,7 +25,7 @@ def joy_cb(msg):
     global joy_msg
     joy_msg = msg
 
-horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
+horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo.launch")
 time.sleep(3.)
 
 # creates HORIZON problem, these parameters can not be tuned at the moment
@@ -36,8 +36,7 @@ full_model = prb.FullBodyProblem()
 full_model.createFullBodyProblem(ns, T)
 
 # create solver
-max_iteration = rospy.get_param("max_iteration", 20)
-print(f"max_iteration: {max_iteration}")
+max_iteration = rospy.get_param("max_iteration", 1)
 
 
 rospy.init_node('full_mpc_test', anonymous=True)
@@ -52,9 +51,11 @@ joy_msg = None
 
 import ddp
 
-opts = {"gnsqp.max_iter": 1,
-         'gnsqp.osqp.scaled_termination': True,
-         'gnsqp.eps_regularization': 1e-4}
+opts = {"gnsqp.max_iter": max_iteration,
+         'gnsqp.osqp.scaled_termination': False,
+         'gnsqp.eps_regularization': 1e-2,
+        'gnsqp.osqp.polish': False,
+         'gnsqp.osqp.verbose': False}
 
 solver = ddp.SQPSolver(full_model.prb, qp_solver_plugin='osqp', opts=opts)
 full_model.q.setInitialGuess(full_model.getInitialState()[0:full_model.nq])
@@ -184,8 +185,23 @@ while not rospy.is_shutdown():
     joint_state_msg.header.stamp = t
     joint_state_publisher.publish(joint_state_msg)
 
+    # publish contact forces and contact points
+    c = dict()
+    for foot_frame in full_model.foot_frames:
+        C = full_model.kindyn.fk(foot_frame)
+        c[foot_frame] = np.zeros((3, ns + 1))
+        for i in range(0, ns + 1):
+            c[foot_frame][:, i] = C(q=solution['q'][:, i])['ee_pos'].toarray().flatten()
     for i in range(0, full_model.nc):
         viz.publishContactForce(t, solution['f_' + full_model.foot_frames[i]][:, 0], frame=full_model.foot_frames[i], topic='fc' + str(i))
+        viz.publishPointTrj(c[full_model.foot_frames[i]], t, 'c' + str(i), "world", color=[0., 0., 1.])
+
+    # publish center of mass
+    COM = full_model.kindyn.centerOfMass()
+    com = np.zeros((3, ns+1))
+    for i in range(0, ns+1):
+        com[:, i] = COM(q=solution['q'][:, i])['com'].toarray().flatten()
+    viz.publishPointTrj(com, t, "SRB", "world")
 
     rate.sleep()
 
