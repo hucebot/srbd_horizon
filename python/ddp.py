@@ -26,6 +26,11 @@ class MetaSolver(Solver):
         self.mapping_functions.append(mapping_function)
         self.meta_solver.add(DDPSolver.ddp_solver, mapping_function)
 
+    def addSQP(self, SQPSolver, mapping_function):
+        self.solvers.append(SQPSolver)
+        self.mapping_functions.append(mapping_function)
+        self.meta_solver.add(SQPSolver.solver, mapping_function)
+
     def setInitialState(self, initial_state):
         self.meta_solver.set_initial_state(initial_state)
     def solve(self) -> bool:
@@ -307,6 +312,7 @@ class SQPSolver(Solver):
                 self.opts['osqp.polish'] = True
 
         self.prb = prb
+        self.param_var = prb.getParameters()
 
         # generate problem to be solved
         self.var_container = self.prb.var_container
@@ -355,10 +361,28 @@ class SQPSolver(Solver):
 
         self.solver.setStateSize(self.prb.getState().getVars().size()[0])
         self.solver.setInputSize(self.prb.getInput().getVars().size()[0])
-        self.solver.setHorizonSize(self.prb.getNNodes())
+        self.solver.setHorizonSize(self.prb.getNNodes()-1)
+
+        self.param_values_list = list()  # each element is a list of params per node
+        for node in range(0, prb.nodes):
+            self.param_values_list.append(self.get_params_value(node))
 
     def setStateInputMapping(self, state_mapping_matrix, input_mapping_matrix):
         self.solver.setStateInputMapping(state_mapping_matrix, input_mapping_matrix)
+
+    def get_params_value(self, node):
+        #for var in self.var_container.getVarList(offset=False):
+            # if node < var.getLowerBounds().shape[1]:
+            #     #self.param_var[var.getName() + "lower"].assign(np.full(var.shape, -1e6)) #var.getLowerBounds()[:,node])
+            #     #self.param_var[var.getName() + "upper"].assign(np.full(var.shape, 1e6)) #var.getUpperBounds()[:,node])
+            #     self.param_var[var.getName() + "lower"].assign(np.nan_to_num(var.getLowerBounds()[:,node], posinf=1e9, neginf=-1e9))
+            #     self.param_var[var.getName() + "upper"].assign(np.nan_to_num(var.getUpperBounds()[:,node], posinf=1e9, neginf=-1e9))
+
+        param_values_at_node = list()
+        for i_params in self.param_var.values():
+            for i_param in i_params.getValues():
+                param_values_at_node.append(i_param[node])
+        return param_values_at_node
 
     def setInitialGuess(self, w_guess):
         self.solver.setInitialGuess(w_guess)
