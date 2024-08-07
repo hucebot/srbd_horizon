@@ -13,10 +13,18 @@ from horizon.ros.replay_trajectory import *
 
 import utilities
 
+def get_parm_from_paramserver(param, namespace, default):
+    param_value = 0
+    if rospy.has_param(namespace + "/" + param):
+        param_value = rospy.get_param(namespace + "/" + param)
+    else:
+        param_value = rospy.get_param(param, default)
+    print(f"{namespace}/{param}: {param_value}")
+    return param_value
 
 class FullBodyProblem:
-    def __init__(self):
-        None
+    def __init__(self, namespace=""):
+        self.namespace = namespace
 
     def computeTransmissionLegTorques(self, q, J1, J2, transmission_lambda):
         lj1 = J1(q=q)['J']
@@ -55,6 +63,7 @@ class FullBodyProblem:
 
         self.nq = kindyn.nq()
         self.nv = kindyn.nv()
+        self.ns = ns
 
         # create state
         q = prb.createStateVariable("q", kindyn.nq())
@@ -71,17 +80,10 @@ class FullBodyProblem:
         qddot = prb.createInputVariable("qddot", kindyn.nv())
         #qddot.setBounds(-1000. * lims, 1000. * lims)
 
-        contact_model = rospy.get_param("contact_model", 4)
-        number_of_legs = rospy.get_param("number_of_legs", 2)
+        contact_model = get_parm_from_paramserver("contact_model", self.namespace, 4)
+        number_of_legs = get_parm_from_paramserver("number_of_legs", self.namespace, 2)
         nc = number_of_legs * contact_model
-        foot_frames = rospy.get_param("foot_frames")
-        if len(foot_frames) == 0:
-            print("foot_frames parameter is mandatory, exiting...")
-            exit()
-        if (len(foot_frames) != nc):
-            print(f"foot frames number should match number of contacts! {len(foot_frames)} != {nc}")
-            exit()
-        print(f"foot_frames: {foot_frames}")
+        foot_frames = get_parm_from_paramserver("foot_frames", self.namespace, [])
 
         f = dict()
         ones3 = np.ones(3)
@@ -246,6 +248,19 @@ class FullBodyProblem:
         self.oref = oref
         self.cdot_switch = cdot_switch
 
+    def getStateInputMappingMatrices(self):
+        n = self.nq + self.nv
+        m = 3 * self.nc + self.nv + 4
+        N = self.ns
+
+        state_mapping_matrix = np.zeros((n * (N + 1), (n + m) * N + n))
+        input_mapping_matrix = np.zeros((m * N, (n + m) * N + n))
+        for i in range(N):
+            state_mapping_matrix[n * i:n * i + n, (n + m) * i:(n + m) * i + n] = np.identity(n)
+            input_mapping_matrix[m * i:m * i + m, (n + m) * i + n:(n + m) * i + n + m] = np.identity(m)
+        state_mapping_matrix[n * N:n * N + n, (n + m) * N:(n + m) * N + n] = np.identity(n)
+        return state_mapping_matrix, input_mapping_matrix
+
     def getInitialState(self):
         return np.concatenate((self.joint_init, np.zeros(self.nv)), axis=0)
 
@@ -271,8 +286,8 @@ class FullBodyProblem:
         return v
 
 class SRBDProblem:
-    def __init__(self):
-        None
+    def __init__(self, namespace=""):
+        self.namespace = namespace
 
     def createSRBDProblem(self, ns, T):
         prb = problem.Problem(ns, casadi_type=cs.SX)
@@ -293,8 +308,8 @@ class SRBDProblem:
         q.addVariable(o)
 
         # contacts position
-        contact_model = rospy.get_param("contact_model", 4)
-        number_of_legs = rospy.get_param("number_of_legs", 2)
+        contact_model = get_parm_from_paramserver("contact_model", self.namespace, 4)
+        number_of_legs = get_parm_from_paramserver("number_of_legs", self.namespace, 2)
         nc = number_of_legs * contact_model
 
         c = dict()
@@ -372,14 +387,7 @@ class SRBDProblem:
         # foot_frames parameters are used to retrieve initial position of the contacts given the initial pose of the robot.
         # note: the order of the contacts state/control variable is the order in which these contacts are set in the param server
 
-        foot_frames = rospy.get_param("foot_frames")
-        if len(foot_frames) == 0:
-            print("foot_frames parameter is mandatory, exiting...")
-            exit()
-        if (len(foot_frames) != nc):
-            print(f"foot frames number should match number of contacts! {len(foot_frames)} != {nc}")
-            exit()
-        print(f"foot_frames: {foot_frames}")
+        foot_frames = get_parm_from_paramserver("foot_frames", self.namespace, [])
 
         i = 0
         initial_foot_position = dict()
@@ -511,8 +519,8 @@ class SRBDProblem:
                          0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4])
 
 class LIPProblem:
-    def __init__(self):
-        None
+    def __init__(self, namespace=""):
+        self.namespace = namespace
 
     def createLIPProblem(self, ns, T):
         prb = problem.Problem(ns, casadi_type=cs.SX)
@@ -531,8 +539,8 @@ class LIPProblem:
         q.addVariable(r)
 
         # contacts position
-        contact_model = rospy.get_param("contact_model", 4)
-        number_of_legs = rospy.get_param("number_of_legs", 2)
+        contact_model = get_parm_from_paramserver("contact_model", self.namespace, 4)
+        number_of_legs = get_parm_from_paramserver("number_of_legs", self.namespace, 2)
         nc = number_of_legs * contact_model
 
         c = dict()
@@ -602,14 +610,7 @@ class LIPProblem:
         # foot_frames parameters are used to retrieve initial position of the contacts given the initial pose of the robot.
         # note: the order of the contacts state/control variable is the order in which these contacts are set in the param server
 
-        foot_frames = rospy.get_param("foot_frames")
-        if len(foot_frames) == 0:
-            print("foot_frames parameter is mandatory, exiting...")
-            exit()
-        if (len(foot_frames) != nc):
-            print(f"foot frames number should match number of contacts! {len(foot_frames)} != {nc}")
-            exit()
-        print(f"foot_frames: {foot_frames}")
+        foot_frames = get_parm_from_paramserver("foot_frames", self.namespace, [])
 
         i = 0
         initial_foot_position = dict()
