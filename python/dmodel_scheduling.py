@@ -134,11 +134,6 @@ srbd.createSRBDProblem(ns_srbd, T_srbd)
 lip = srbd_problem.LIPProblem()
 lip.createLIPProblem(ns_lip, T_lip)
 
-# create solver
-max_iteration = rospy.get_param("max_iteration", 20)
-print(f"max_iteration: {max_iteration}")
-
-
 rospy.init_node('srbd_mpc_test', anonymous=True)
 
 solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
