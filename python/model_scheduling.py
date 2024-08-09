@@ -133,6 +133,11 @@ solver_sqp.updateConstraints()
 #solver_sqp.solve()
 meta_solver.solve()
 
+solution = meta_solver.getSolutionDict()
+srbd_solution = meta_solver.getSolutionModel(1)
+lip_solution = meta_solver.getSolutionModel(2)
+print(srbd_solution)
+
 
 
 
