@@ -36,9 +36,7 @@ class MetaSolver(Solver):
     def solve(self) -> bool:
         params = list()
         for solver in self.solvers:
-            for node in range(0, solver.prb.nodes):
-                solver.param_values_list[node] = solver.get_params_value(node)
-            params.append(solver.param_values_list)
+            params.append(solver.update_params())
 
         self.X, self.U = self.meta_solver.solve(params)
 
@@ -166,16 +164,17 @@ class DDPSolver(Solver):
 
     def solve(self) -> bool:
         # 1. update parameters
-        for node in range(0, self.prb.nodes):
-            self.param_values_list[node] = self.get_params_value(node)
+        self.update_params()
 
         x, u = self.ddp_solver.solve(self.param_values_list)
         self.var_solution = self._createVarSolDict(x, u)
         self.var_solution['x_opt'] = x
         self.var_solution['u_opt'] = u
 
-        
-
+    def update_params(self):
+        for node in range(0, self.prb.nodes):
+            self.param_values_list[node] = self.get_params_value(node)
+        return self.param_values_list
     def is_equality_constraint(self, constr):
         upper = np.array(constr.getUpperBounds())
         lower = np.array(constr.getLowerBounds())
@@ -363,29 +362,29 @@ class SQPSolver(Solver):
         self.solver.setInputSize(self.prb.getInput().getVars().size()[0])
         self.solver.setHorizonSize(self.prb.getNNodes()-1)
 
-        self.param_values_list = list()  # each element is a list of params per node
-        for node in range(0, prb.nodes):
-            self.param_values_list.append(self.get_params_value(node))
-
     def setStateInputMapping(self, state_mapping_matrix, input_mapping_matrix):
         self.solver.setStateInputMapping(state_mapping_matrix, input_mapping_matrix)
 
-    def get_params_value(self, node):
-        #for var in self.var_container.getVarList(offset=False):
-            # if node < var.getLowerBounds().shape[1]:
-            #     #self.param_var[var.getName() + "lower"].assign(np.full(var.shape, -1e6)) #var.getLowerBounds()[:,node])
-            #     #self.param_var[var.getName() + "upper"].assign(np.full(var.shape, 1e6)) #var.getUpperBounds()[:,node])
-            #     self.param_var[var.getName() + "lower"].assign(np.nan_to_num(var.getLowerBounds()[:,node], posinf=1e9, neginf=-1e9))
-            #     self.param_var[var.getName() + "upper"].assign(np.nan_to_num(var.getUpperBounds()[:,node], posinf=1e9, neginf=-1e9))
-
-        param_values_at_node = list()
-        for i_params in self.param_var.values():
-            for i_param in i_params.getValues():
-                param_values_at_node.append(i_param[node])
-        return param_values_at_node
+    def update_params(self):
+        p = self._getParList()
+        if p.size1() == 0:
+            p = cs.DM([])
+        #print(f"np.array(p, dtype=np.float64).flatten() {np.array(p, dtype=np.float64).flatten()}")
+        #exit()
+        return np.array(p, dtype=np.float64)
 
     def setInitialGuess(self, w_guess):
         self.solver.setInitialGuess(w_guess)
+
+    def updateBounds(self):
+        lbw = np.array(self._getVarList('lb'), dtype=np.float64).flatten()
+        ubw = np.array(self._getVarList('ub'), dtype=np.float64).flatten()
+        self.solver.updateBounds(lbw, ubw)
+
+    def updateConstraints(self):
+        lbg = np.array(self._getFunList('lb'), dtype=np.float64).flatten()
+        ubg = np.array(self._getFunList('ub'), dtype=np.float64).flatten()
+        self.solver.updateConstraints(lbg, ubg)
     def solve(self) -> bool:
 
         # update lower/upper bounds of variables

@@ -67,7 +67,11 @@ class FullBodyProblem:
 
         # create state
         q = prb.createStateVariable("q", kindyn.nq())
-        q.setBounds(kindyn.q_min(), kindyn.q_max())
+        q_min = np.array(kindyn.q_min())
+        #q_min[0:3] = -1e6 * np.ones(3)
+        q_max = np.array(kindyn.q_max())
+        #q_max[0:3] = -q_min[0:3]
+        q.setBounds(q_min, q_max)
         q.setBounds(joint_init, joint_init, nodes=0)
         q.setInitialGuess(joint_init)
 
@@ -78,7 +82,7 @@ class FullBodyProblem:
 
         # create input
         qddot = prb.createInputVariable("qddot", kindyn.nv())
-        #qddot.setBounds(-1000. * lims, 1000. * lims)
+        #qddot.setBounds(-10000. * lims, 10000. * lims)
 
         contact_model = get_parm_from_paramserver("contact_model", self.namespace, 4)
         number_of_legs = get_parm_from_paramserver("number_of_legs", self.namespace, 2)

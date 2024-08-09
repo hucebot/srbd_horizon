@@ -125,7 +125,12 @@ meta_solver.add(solver_srbd, srbd_to_lip_function)
 foo_mapping_function = cs.Function("foo", [lip.prb.getState().getVars()], [cs.DM.zeros(1, 1)])
 meta_solver.add(solver_lip, foo_mapping_function)
 
-meta_solver.setInitialState(full_model.getInitialState())
+#meta_solver.setInitialState(full_model.getInitialState()) # this is not used when first solver is SQP, x0 is set through constraints!
+
+# IMPORTANT: update bounds and constraint of SQP todo: can we do it internally to the solver?
+solver_sqp.updateBounds()
+solver_sqp.updateConstraints()
+#solver_sqp.solve()
 meta_solver.solve()
 
 
