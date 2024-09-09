@@ -106,7 +106,7 @@ class FullBodyProblem:
         prb.setDynamics(xdot)
         prb.setDt(T / ns)
         dae = {'x': x, 'p': qddot, 'ode': xdot, 'quad': 0}
-        F_integrator = integrators.EULER(dae, opts=None)
+        F_integrator = integrators.RK4(dae, opts=None) #originally EULER
 
         # Constraints
         #1. multiple shooting
@@ -259,10 +259,10 @@ class FullBodyProblem:
 
         state_mapping_matrix = np.zeros((n * (N + 1), (n + m) * N + n))
         input_mapping_matrix = np.zeros((m * N, (n + m) * N + n))
-        for i in range(N):
-            state_mapping_matrix[n * i:n * i + n, (n + m) * i:(n + m) * i + n] = np.identity(n)
-            input_mapping_matrix[m * i:m * i + m, (n + m) * i + n:(n + m) * i + n + m] = np.identity(m)
-        state_mapping_matrix[n * N:n * N + n, (n + m) * N:(n + m) * N + n] = np.identity(n)
+
+        state_mapping_matrix[0:n*(N+1), 0:n*(N+1)] = np.identity(n*(N+1))
+        input_mapping_matrix[0:m*N, n*(N+1):n*(N+1)+m*N] = np.identity(m*N)
+
         return state_mapping_matrix, input_mapping_matrix
 
     def getInitialState(self):
