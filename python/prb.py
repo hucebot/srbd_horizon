@@ -259,11 +259,23 @@ class FullBodyProblem:
 
         state_mapping_matrix = np.zeros((n * (N + 1), (n + m) * N + n))
         input_mapping_matrix = np.zeros((m * N, (n + m) * N + n))
-        for i in range(N):
-            state_mapping_matrix[n * i:n * i + n, (n + m) * i:(n + m) * i + n] = np.identity(n)
-            input_mapping_matrix[m * i:m * i + m, (n + m) * i + n:(n + m) * i + n + m] = np.identity(m)
-        state_mapping_matrix[n * N:n * N + n, (n + m) * N:(n + m) * N + n] = np.identity(n)
+
+        state_mapping_matrix[0:n*(N+1), 0:n*(N+1)] = np.identity(n*(N+1))
+        input_mapping_matrix[0:m*N, n*(N+1):n*(N+1)+m*N] = np.identity(m*N)
+
         return state_mapping_matrix, input_mapping_matrix
+
+    def getVarInputMappingMatrix(self):
+        N = self.ns
+        n = self.nq + self.nv
+
+        Q = np.zeros((self.nq * (N + 1), n * (N + 1)))
+        Q[:, 0:self.nq*(N+1)] = np.identity(self.nq*(N+1))
+
+        V = np.zeros((self.nv * (N + 1), n * (N + 1)))
+        V[:, self.nq * (N + 1):] = np.identity(self.nv * (N + 1))
+
+        return [Q, V]
 
     def getInitialState(self):
         return np.concatenate((self.joint_init, np.zeros(self.nv)), axis=0)
