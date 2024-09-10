@@ -365,6 +365,9 @@ class SQPSolver(Solver):
     def setStateInputMapping(self, state_mapping_matrix, input_mapping_matrix):
         self.solver.setStateInputMapping(state_mapping_matrix, input_mapping_matrix)
 
+    def setVariableStateMapping(self, var_state_mapping_matrix):
+        self.solver.setVariableStateMapping(var_state_mapping_matrix)
+
     def update_params(self):
         p = self._getParList()
         if p.size1() == 0:
