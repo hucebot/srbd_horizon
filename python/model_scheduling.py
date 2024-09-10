@@ -60,6 +60,8 @@ full_model.right_actuation_lambda.setInitialGuess(full_model.getStaticInput()[fu
 solver_sqp.setInitialGuess(full_model.getInitialGuess())
 X, U = full_model.getStateInputMappingMatrices()
 solver_sqp.setStateInputMapping(X, U)
+P = full_model.getVarInputMappingMatrix()
+solver_sqp.setVariableStateMapping(P)
 
 
 ddp_opts = dict()
