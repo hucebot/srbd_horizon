@@ -25,7 +25,7 @@ def joy_cb(msg):
     global joy_msg
     joy_msg = msg
 
-horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo.launch")
+horizon_ros_utils.roslaunch("srbd_horizon", "full_model_kangaroo.launch")
 time.sleep(3.)
 
 # creates HORIZON problem, these parameters can not be tuned at the moment

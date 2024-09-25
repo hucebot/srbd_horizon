@@ -47,7 +47,7 @@
 
 
     <!-- RVIZ -->
-    <node type="rviz" name="rviz" pkg="rviz" args="-d $(find horizon_examples)/SRBD_horizon.rviz"/>
+    <node type="rviz" name="rviz" pkg="rviz" args="-d $(find srbd_horizon)/launch/SRBD_horizon.rviz"/>
             
 
 </launch>
