@@ -44,8 +44,10 @@ class FullBodyProblem:
         lp2 = FK2(q=q)['ee_pos']
         return lp2 - lp1
 
-
-    def createFullBodyProblem(self, ns, T):
+    """
+    This contains the full body problem for the kangaroo robot including the dynamic part of the transmission model
+    """
+    def createFullBodyProblem(self, ns, T, include_transmission_forces):
         prb = problem.Problem(ns, casadi_type=cs.SX)
 
         urdf = rospy.get_param("robot_description", "")
@@ -95,10 +97,16 @@ class FullBodyProblem:
             f[foot_frame] = prb.createInputVariable("f_" + foot_frame, 3)  # Contact i forces
             f[foot_frame].setBounds(-1e4 * ones3, 1e4 * ones3)
 
-        left_actuation_lambda = prb.createInputVariable("left_actuation_lambda", 2)
-        left_actuation_lambda.setBounds(-1e4 * np.ones(2), 1e4 * np.ones(2))
-        right_actuation_lambda = prb.createInputVariable("right_actuation_lambda", 2)
-        right_actuation_lambda.setBounds(-1e4 * np.ones(2), 1e4 * np.ones(2))
+        left_actuation_lambda = None
+        right_actuation_lambda = None
+        if include_transmission_forces:
+            left_actuation_lambda = prb.createInputVariable("left_actuation_lambda", 2)
+            left_actuation_lambda.setBounds(-1e4 * np.ones(2), 1e4 * np.ones(2))
+            right_actuation_lambda = prb.createInputVariable("right_actuation_lambda", 2)
+            right_actuation_lambda.setBounds(-1e4 * np.ones(2), 1e4 * np.ones(2))
+
+        print(f"State: {prb.getState().getVars()}")
+        print(f"Input: {prb.getInput().getVars()}")
 
         # Formulate discrete time dynamics
         x = cs.vertcat(q, qdot)
@@ -106,14 +114,16 @@ class FullBodyProblem:
         prb.setDynamics(xdot)
         prb.setDt(T / ns)
         dae = {'x': x, 'p': qddot, 'ode': xdot, 'quad': 0}
-        F_integrator = integrators.EULER(dae, opts=None)
+        F_integrator = integrators.RK2(dae, opts=None)
 
         # Constraints
         #1. multiple shooting
         qddot_prev = qddot.getVarOffset(-1)
         x_prev = cs.vertcat(q.getVarOffset(-1), qdot.getVarOffset(-1))
         x_int = F_integrator(x=x_prev, u=qddot_prev, dt=T/ns)
-        prb.createConstraint("multiple_shooting", x_int["f"] - x, nodes=list(range(1, ns + 1)), bounds=dict(lb=np.zeros(kindyn.nv() + kindyn.nq()), ub=np.zeros(kindyn.nv() + kindyn.nq())))
+        prb.createConstraint("multiple_shooting", x_int["f"] - x, nodes=list(range(1, ns + 1)),
+                             bounds=dict(lb=np.zeros(kindyn.nv() + kindyn.nq()),
+                                         ub=np.zeros(kindyn.nv() + kindyn.nq())))
 
         #2. Torque limits including underactuation (notice: it includes as well the torque limits for the transmission)
         transmission_frames_left_leg = ["leg_left_length_link", "leg_left_knee_lower_bearing"] # <-- kangaroo related
@@ -124,12 +134,18 @@ class FullBodyProblem:
         RJ1 = kindyn.jacobian(transmission_frames_right_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RJ2 = kindyn.jacobian(transmission_frames_right_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
 
-        tau_transmission = self.computeTransmissionLegTorques(q, LJ1, LJ2, left_actuation_lambda) + self.computeTransmissionLegTorques(q, RJ1, RJ2, right_actuation_lambda)
+        tau_transmission = np.zeros(self.nv)
+        if include_transmission_forces:
+            tau_transmission = (self.computeTransmissionLegTorques(q, LJ1, LJ2, left_actuation_lambda) +
+                                self.computeTransmissionLegTorques(q, RJ1, RJ2, right_actuation_lambda))
 
         tau_min = -np.array(torque_lims)
         tau_max = np.array(torque_lims)
         tau = kin_dyn.InverseDynamics(kindyn, foot_frames, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED).call(q, qdot, qddot,  f, tau_transmission)
-        prb.createConstraint("inverse_dynamics", tau, nodes=list(range(0, ns)), bounds=dict(lb=tau_min, ub=tau_max))
+        if include_transmission_forces:
+            prb.createConstraint("inverse_dynamics", tau, nodes=list(range(0, ns)), bounds=dict(lb=tau_min, ub=tau_max))
+        else:
+            prb.createConstraint("inverse_dynamics", tau[0:6], nodes=list(range(0, ns)), bounds=dict(lb=tau_min[0:6], ub=tau_max[0:6]))
 
         #3. kinematic constraints for transmission
         LV1 = kindyn.frameVelocity(transmission_frames_left_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
@@ -227,8 +243,7 @@ class FullBodyProblem:
         prb.createResidual("relative_pos_y_3_6", 1e2 * (-c[foot_frames[3]][1] + c[foot_frames[7]][1] - d_initial_2[1]))
         prb.createResidual("relative_pos_x_3_6", 1e2 * (-c[foot_frames[3]][0] + c[foot_frames[7]][0] - d_initial_2[0]))
 
-
-
+        self.include_transmission_forces = include_transmission_forces
         self.prb = prb
         self.f = f
         self.q = q
@@ -254,7 +269,11 @@ class FullBodyProblem:
 
     def getStateInputMappingMatrices(self):
         n = self.nq + self.nv
-        m = 3 * self.nc + self.nv + 4
+
+        lambda_size = 0
+        if self.include_transmission_forces:
+            lambda_size = 4
+        m = 3 * self.nc + self.nv + lambda_size
         N = self.ns
 
         state_mapping_matrix = np.zeros((n * (N + 1), (n + m) * N + n))
@@ -265,7 +284,7 @@ class FullBodyProblem:
 
         return state_mapping_matrix, input_mapping_matrix
 
-    def getVarInputMappingMatrix(self):
+    def getVarInputMappingMatrix(self): #todo: change name to getStateInputMappingMatrix
         N = self.ns
         n = self.nq + self.nv
 
@@ -281,15 +300,25 @@ class FullBodyProblem:
         return np.concatenate((self.joint_init, np.zeros(self.nv)), axis=0)
 
     def getStaticInput(self):
-        f = [0., 0., self.m * 9.81 / 8,
-             0., 0., self.m * 9.81 / 8,
-             0., 0., self.m * 9.81 / 8,
-             0., 0., self.m * 9.81 / 8,
-             0., 0., self.m * 9.81 / 8,
-             0., 0., self.m * 9.81 / 8,
-             0., 0., self.m * 9.81 / 8,
-             0., 0., self.m * 9.81 / 8,
-             0., 0., 0., 0.] #<-- 8 contact forces and 4 constraint forces
+        if self.include_transmission_forces:
+            f = [0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., 0., 0.] #<-- 8 contact forces and 4 constraint forces
+        else:
+            f = [0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8,
+                 0., 0., self.m * 9.81 / 8]
         return np.concatenate((np.zeros(self.nv), f), axis=0)
 
     def getInitialGuess(self):

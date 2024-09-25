@@ -33,7 +33,7 @@ ns = 20
 T = 1.
 
 full_model = prb.FullBodyProblem()
-full_model.createFullBodyProblem(ns, T)
+full_model.createFullBodyProblem(ns, T, include_transmission_forces=False)
 
 # create solver
 max_iteration = rospy.get_param("max_iteration", 1)
@@ -53,7 +53,7 @@ import ddp
 
 opts = {"gnsqp.max_iter": max_iteration,
          'gnsqp.osqp.scaled_termination': False,
-         'gnsqp.eps_regularization': 1e-2,
+         'gnsqp.eps_regularization': 1e-3, #1e-2,
         'gnsqp.osqp.polish': False,
          'gnsqp.osqp.verbose': False}
 
@@ -65,16 +65,19 @@ i = -1
 for foot_frame in full_model.foot_frames:
     i += 1
     full_model.f[foot_frame].setInitialGuess(full_model.getStaticInput()[full_model.nv+i*3:full_model.nv+i*3+3])
-full_model.left_actuation_lambda.setInitialGuess(full_model.getStaticInput()[full_model.nv+i*3+3:full_model.nv+i*3+3+2])
-full_model.right_actuation_lambda.setInitialGuess(full_model.getStaticInput()[full_model.nv+i*3+3+2:])
+if full_model.include_transmission_forces:
+    full_model.left_actuation_lambda.setInitialGuess(full_model.getStaticInput()[full_model.nv+i*3+3:full_model.nv+i*3+3+2])
+    full_model.right_actuation_lambda.setInitialGuess(full_model.getStaticInput()[full_model.nv+i*3+3+2:])
 
 solver.setInitialGuess(full_model.getInitialGuess())
 
 """
 Dictionary to store variables used for warm-start
 """
-variables_dict = {"q": full_model.q, "qdot": full_model.qdot, "qddot": full_model.qddot,
-                  "left_actuation_lambda": full_model.left_actuation_lambda, "right_actuation_lambda": full_model.right_actuation_lambda}
+variables_dict = {"q": full_model.q, "qdot": full_model.qdot, "qddot": full_model.qddot}
+if full_model.include_transmission_forces:
+    variables_dict["left_actuation_lambda"] = full_model.left_actuation_lambda
+    variables_dict["right_actuation_lambda"] = full_model.right_actuation_lambda
 for foot_frame in full_model.foot_frames:
     variables_dict["f_" + foot_frame] = full_model.f[foot_frame]
 
