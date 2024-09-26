@@ -39,3 +39,8 @@ def quat_inverse(q):
     p = q
     p[0:3] = -p[0:3]
     return p
+
+def normalize_quaternion_part_horizon(q, ns):
+    for n in range(ns+1):
+        q[3:7, n] /= np.linalg.norm(q[3:7, n], ord=2)
+    return q
