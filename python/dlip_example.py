@@ -81,7 +81,7 @@ simulation_euler_integrator = solver.get_f(0)
 
 # Walking patter generator and scheduler
 wpg = wpg.steps_phase(srbd.f, lip.c, lip.cdot, lip.initial_foot_position[0][2].__float__(), lip.c_ref, srbd.w_ref, srbd.orientation_tracking_gain, lip.cdot_switch, ns, number_of_legs=2,
-                      contact_model=lip.contact_model)
+                      contact_model=lip.contact_model, cdotxy_tracking_constraint=None)
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 while not rospy.is_shutdown():
 
