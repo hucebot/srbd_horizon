@@ -169,6 +169,8 @@ class FullBodyProblem:
         cdot_switch = dict()
         initial_foot_position = dict()
         force_switch_weight = rospy.get_param("force_switch_weight", 1e2)
+
+        cdotxy_tracking_constraint = dict()
         for foot_frame in foot_frames:
             FK = kindyn.fk(foot_frame)
             c_foot_frame = FK(q=q)['ee_pos']
@@ -186,7 +188,8 @@ class FullBodyProblem:
             cdot[foot_frame] = cdot_linear
             cdot_angular = DFK(q=q, qdot=qdot)['ee_vel_angular']
             prb.createConstraint(f"{foot_frame}_cdot_angular", cdot_angular)
-            prb.createConstraint("cdotxy_tracking_" + foot_frame, cdot_switch[foot_frame] * cdot[foot_frame][0:2])
+            #prb.createConstraint("cdotxy_tracking_" + foot_frame, cdot_switch[foot_frame] * cdot[foot_frame][0:2])
+            cdotxy_tracking_constraint[foot_frame] = prb.createConstraint("cdotxy_tracking_" + foot_frame, cdot[foot_frame][0:2])
             prb.createResidual("min_cdot_" + foot_frame, 1e-1 * cdot[foot_frame])
 
             mu = 0.8  # friction coefficient
@@ -266,6 +269,7 @@ class FullBodyProblem:
         self.rdot_ref = rdot_ref
         self.oref = oref
         self.cdot_switch = cdot_switch
+        self.cdotxy_tracking_constraint = cdotxy_tracking_constraint
 
     def getStateInputMappingMatrices(self):
         n = self.nq + self.nv
