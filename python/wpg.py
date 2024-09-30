@@ -90,7 +90,8 @@ class steps_phase:
         # shift contact plan back by one node
         for j in range(1, self.nodes+1):
             for i in range(0, self.contact_model * self.number_of_legs):
-                self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j-1)
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j-1)
                 if self.cdotxy_tracking_constraint is not None:
                     self.cdotxy_tracking_constraint[i].setBounds(self.cdotxy_tracking_constraint[i].getLowerBounds(node=j),
                                                              self.cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j-1)
@@ -105,7 +106,8 @@ class steps_phase:
             self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
             for i in range(0, self.contact_model):
-                self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=self.nodes)
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(self.l_cdot_switch[ref_id], nodes=self.nodes)
                 self.c_ref[i].assign(self.l_cycle[ref_id], nodes=self.nodes)
                 self.f[i].setBounds(self.l_cdot_switch[ref_id] * -1e4 * np.ones(3),
                                     self.l_cdot_switch[ref_id] * 1e4 * np.ones(3), nodes=self.nodes-1)
@@ -113,7 +115,8 @@ class steps_phase:
                     self.cdotxy_tracking_constraint[i].setBounds((1. - self.l_cdot_switch[ref_id]) * -1e4 * np.ones(2),
                                                              (1. - self.l_cdot_switch[ref_id]) * 1e4 * np.ones(2), nodes=self.nodes)
             for i in range(self.contact_model, self.contact_model * self.number_of_legs):
-                self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=self.nodes)
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(self.r_cdot_switch[ref_id], nodes=self.nodes)
                 self.c_ref[i].assign(self.r_cycle[ref_id], nodes=self.nodes)
                 self.f[i].setBounds(self.r_cdot_switch[ref_id] * -1e4 * np.ones(3),
                                     self.r_cdot_switch[ref_id] * 1e4 * np.ones(3), nodes=self.nodes-1)
@@ -124,7 +127,8 @@ class steps_phase:
             self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(0., nodes=self.nodes)
             for i in range(0, len(self.c)):
-                self.cdot_switch[i].assign(self.jump_cdot_switch[ref_id], nodes=self.nodes)
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(self.jump_cdot_switch[ref_id], nodes=self.nodes)
                 self.f[i].setBounds(self.jump_cdot_switch[ref_id] * np.ones(3),
                                     self.jump_cdot_switch[ref_id] * np.ones(3), nodes=self.nodes - 1)
                 if self.cdotxy_tracking_constraint is not None:
@@ -135,7 +139,8 @@ class steps_phase:
             self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
             for i in range(0, len(self.c)):
-                self.cdot_switch[i].assign(1., nodes=self.nodes)
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(1., nodes=self.nodes)
                 self.c_ref[i].assign(0., nodes=self.nodes)
                 self.f[i].setBounds(-1e4 * np.ones(3), 1e4 * np.ones(3), nodes=self.nodes - 1)
                 if self.cdotxy_tracking_constraint is not None:
