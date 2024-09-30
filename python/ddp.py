@@ -302,6 +302,7 @@ class SQPSolver(Solver):
             filtered_opts = {k[6:]: opts[k] for k in opts.keys() if k.startswith('gnsqp.')}
 
         super().__init__(prb, opts=filtered_opts)
+        
 
         if qp_solver_plugin == 'osqp':
             if 'osqp.verbose' not in self.opts:
@@ -316,6 +317,13 @@ class SQPSolver(Solver):
         # generate problem to be solved
         self.var_container = self.prb.var_container
         self.fun_container = self.prb.function_container
+
+        # recover problem size
+        self.state_var = prb.getState().getVars()
+        self.state_size = self.state_var.size()[0]
+        self.input_var = prb.getInput().getVars()
+        self.input_size = self.input_var.size()[0]
+        self.param_var = prb.getParameters()
 
         # generate problem to be solver
         var_list = list()
@@ -367,6 +375,9 @@ class SQPSolver(Solver):
 
     def setVariableStateMapping(self, var_state_mapping_matrix):
         self.solver.setVariableStateMapping(var_state_mapping_matrix)
+        
+    def setVariableInputMapping(self, var_input_mapping_matrix):
+        self.solver.setVariableInputMapping(var_input_mapping_matrix)
 
     def update_params(self):
         p = self._getParList()

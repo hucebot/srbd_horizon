@@ -92,7 +92,7 @@ c = dict()
 cdot = dict()
 initial_foot_position = dict()
 c_ref = dict()
-cdot_switch = dict()
+#cdot_switch = dict()
 cdotxy_tracking_constraint = dict()
 for foot_frame in full_model.foot_frames:
     f[k] = full_model.f[foot_frame]
@@ -100,13 +100,13 @@ for foot_frame in full_model.foot_frames:
     cdot[k] = full_model.cdot[foot_frame]
     initial_foot_position[k] = full_model.initial_foot_position[foot_frame]
     c_ref[k] = full_model.c_ref[foot_frame]
-    cdot_switch[k] = full_model.cdot_switch[foot_frame]
+    #cdot_switch[k] = full_model.cdot_switch[foot_frame]
     cdotxy_tracking_constraint[k] = full_model.cdotxy_tracking_constraint[foot_frame]
     k += 1
 
 
 wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, full_model.w_ref,
-                      full_model.orientation_tracking_gain, cdot_switch, nodes=ns, number_of_legs=2,
+                      full_model.orientation_tracking_gain, cdot_switch=None, nodes=ns, number_of_legs=2,
                       contact_model=full_model.contact_model, cdotxy_tracking_constraint=cdotxy_tracking_constraint)
 
 while not rospy.is_shutdown():
