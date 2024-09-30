@@ -56,7 +56,19 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
+        SRB:
+          Value: true
+        ZMP:
+          Value: true
         base_link:
+          Value: true
+        c0:
+          Value: true
+        c1:
+          Value: true
+        c2:
+          Value: true
+        c3:
           Value: true
         imu_link:
           Value: true
@@ -138,6 +150,10 @@ Visualization Manager:
       Show Names: true
       Tree:
         world:
+          SRB:
+            {}
+          ZMP:
+            {}
           base_link:
             imu_link:
               {}
@@ -189,6 +205,14 @@ Visualization Manager:
                             {}
                           right_foot_upper_right:
                             {}
+          c0:
+            {}
+          c1:
+            {}
+          c2:
+            {}
+          c3:
+            {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -316,7 +340,7 @@ Visualization Manager:
       Marker Topic: /box
       Name: Marker
       Namespaces:
-        {}
+        SRBD: true
       Queue Size: 100
       Value: true
     - Class: rviz/MarkerArray
@@ -324,7 +348,7 @@ Visualization Manager:
       Marker Topic: /contacts
       Name: MarkerArray
       Namespaces:
-        {}
+        SRBD: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -332,7 +356,7 @@ Visualization Manager:
       Marker Topic: /SRB_trj
       Name: Marker
       Namespaces:
-        {}
+        SRBD: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -340,7 +364,7 @@ Visualization Manager:
       Marker Topic: /c0_trj
       Name: Marker
       Namespaces:
-        {}
+        SRBD: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -348,7 +372,7 @@ Visualization Manager:
       Marker Topic: /c1_trj
       Name: Marker
       Namespaces:
-        {}
+        SRBD: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -356,7 +380,7 @@ Visualization Manager:
       Marker Topic: /c2_trj
       Name: Marker
       Namespaces:
-        {}
+        SRBD: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -364,7 +388,7 @@ Visualization Manager:
       Marker Topic: /c3_trj
       Name: Marker
       Namespaces:
-        {}
+        SRBD: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -404,7 +428,7 @@ Visualization Manager:
       Marker Topic: /ZMP_trj
       Name: Marker
       Namespaces:
-        {}
+        LIP: true
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -427,7 +451,7 @@ Visualization Manager:
       Marker Topic: /COM_trj
       Name: Marker
       Namespaces:
-        {}
+        LIP: true
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -446,6 +470,126 @@ Visualization Manager:
       Update Interval: 0
       Value: false
       Visual Enabled: true
+    - Alpha: 1
+      Arrow Width: 0.20000000298023224
+      Class: rviz/WrenchStamped
+      Enabled: true
+      Force Arrow Scale: 0.009999999776482582
+      Force Color: 204; 51; 51
+      Hide Small Values: false
+      History Length: 1
+      Name: WrenchStamped
+      Queue Size: 10
+      Topic: /fm_fc0
+      Torque Arrow Scale: 0.009999999776482582
+      Torque Color: 204; 204; 51
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Arrow Width: 0.20000000298023224
+      Class: rviz/WrenchStamped
+      Enabled: true
+      Force Arrow Scale: 0.009999999776482582
+      Force Color: 204; 51; 51
+      Hide Small Values: false
+      History Length: 1
+      Name: WrenchStamped
+      Queue Size: 10
+      Topic: /fm_fc1
+      Torque Arrow Scale: 0.009999999776482582
+      Torque Color: 204; 204; 51
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Arrow Width: 0.20000000298023224
+      Class: rviz/WrenchStamped
+      Enabled: true
+      Force Arrow Scale: 0.009999999776482582
+      Force Color: 204; 51; 51
+      Hide Small Values: false
+      History Length: 1
+      Name: WrenchStamped
+      Queue Size: 10
+      Topic: /fm_fc2
+      Torque Arrow Scale: 0.009999999776482582
+      Torque Color: 204; 204; 51
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Arrow Width: 0.20000000298023224
+      Class: rviz/WrenchStamped
+      Enabled: true
+      Force Arrow Scale: 0.009999999776482582
+      Force Color: 204; 51; 51
+      Hide Small Values: false
+      History Length: 1
+      Name: WrenchStamped
+      Queue Size: 10
+      Topic: /fm_fc3
+      Torque Arrow Scale: 0.009999999776482582
+      Torque Color: 204; 204; 51
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Arrow Width: 0.20000000298023224
+      Class: rviz/WrenchStamped
+      Enabled: true
+      Force Arrow Scale: 0.009999999776482582
+      Force Color: 204; 51; 51
+      Hide Small Values: false
+      History Length: 1
+      Name: WrenchStamped
+      Queue Size: 10
+      Topic: /fm_fc4
+      Torque Arrow Scale: 0.009999999776482582
+      Torque Color: 204; 204; 51
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Arrow Width: 0.20000000298023224
+      Class: rviz/WrenchStamped
+      Enabled: true
+      Force Arrow Scale: 0.009999999776482582
+      Force Color: 204; 51; 51
+      Hide Small Values: false
+      History Length: 1
+      Name: WrenchStamped
+      Queue Size: 10
+      Topic: /fm_fc5
+      Torque Arrow Scale: 0.009999999776482582
+      Torque Color: 204; 204; 51
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Arrow Width: 0.20000000298023224
+      Class: rviz/WrenchStamped
+      Enabled: true
+      Force Arrow Scale: 0.009999999776482582
+      Force Color: 204; 51; 51
+      Hide Small Values: false
+      History Length: 1
+      Name: WrenchStamped
+      Queue Size: 10
+      Topic: /fm_fc6
+      Torque Arrow Scale: 0.009999999776482582
+      Torque Color: 204; 204; 51
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Arrow Width: 0.20000000298023224
+      Class: rviz/WrenchStamped
+      Enabled: true
+      Force Arrow Scale: 0.009999999776482582
+      Force Color: 204; 51; 51
+      Hide Small Values: false
+      History Length: 1
+      Name: WrenchStamped
+      Queue Size: 10
+      Topic: /fm_fc7
+      Torque Arrow Scale: 0.009999999776482582
+      Torque Color: 204; 204; 51
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -511,4 +655,4 @@ Window Geometry:
     collapsed: false
   Width: 1848
   X: 1992
-  Y: 0
+  Y: 477
