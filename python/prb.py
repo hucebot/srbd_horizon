@@ -166,7 +166,7 @@ class FullBodyProblem:
         c_ref = dict()
         c = dict()
         cdot = dict()
-        cdot_switch = dict()
+        #cdot_switch = dict()
         initial_foot_position = dict()
         force_switch_weight = rospy.get_param("force_switch_weight", 1e2)
 
@@ -181,8 +181,8 @@ class FullBodyProblem:
             c_ref[foot_frame].assign(c_init[2], nodes=range(0, ns + 1))
             prb.createConstraint("cz_tracking_" + foot_frame, c_foot_frame[2] - c_ref[foot_frame])
 
-            cdot_switch[foot_frame] = prb.createParameter("cdot_switch_" + foot_frame, 1)
-            cdot_switch[foot_frame].assign(1., nodes=range(0, ns + 1))
+            #cdot_switch[foot_frame] = prb.createParameter("cdot_switch_" + foot_frame, 1)
+            #cdot_switch[foot_frame].assign(1., nodes=range(0, ns + 1))
             DFK = kindyn.frameVelocity(foot_frame, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
             cdot_linear = DFK(q=q, qdot=qdot)['ee_vel_linear']
             cdot[foot_frame] = cdot_linear
@@ -268,7 +268,7 @@ class FullBodyProblem:
         self.contact_model = contact_model
         self.rdot_ref = rdot_ref
         self.oref = oref
-        self.cdot_switch = cdot_switch
+        #self.cdot_switch = cdot_switch
         self.cdotxy_tracking_constraint = cdotxy_tracking_constraint
 
     def getStateInputMappingMatrices(self):
@@ -288,7 +288,7 @@ class FullBodyProblem:
 
         return state_mapping_matrix, input_mapping_matrix
 
-    def getVarInputMappingMatrix(self): #todo: change name to getStateInputMappingMatrix
+    def getVarStateMappingMatrix(self):
         N = self.ns
         n = self.nq + self.nv
 
@@ -299,6 +299,27 @@ class FullBodyProblem:
         V[:, self.nq * (N + 1):] = np.identity(self.nv * (N + 1))
 
         return [Q, V]
+
+    def getVarInputMappingMatrix(self):
+        N = self.ns
+        lambda_size = 0
+        if self.include_transmission_forces:
+            lambda_size = 4
+        m = 3 * self.nc + self.nv + lambda_size
+
+        A = np.zeros((self.nv * N, m * N))
+        A[:, 0:self.nv*N] = np.identity(self.nv*N)
+
+        F = np.zeros((3 * self.nc * N, m * N))
+        F[:, self.nv*N:] = np.identity(3 * self.nc * N)
+
+        O = [A, F]
+        if lambda_size != 0:
+            L = np.zeros((lambda_size * N, m * N))
+            L[:, self.nv * N + 3 * self.nc * N:] = np.identity(lambda_size * N)
+            O.append(L)
+
+        return O
 
     def getInitialState(self):
         return np.concatenate((self.joint_init, np.zeros(self.nv)), axis=0)
