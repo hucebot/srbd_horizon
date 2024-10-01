@@ -48,7 +48,7 @@ import ddp
 
 opts = {"gnsqp.max_iter": max_iteration,
          'gnsqp.osqp.scaled_termination': False,
-         'gnsqp.eps_regularization': 1e-3, #1e-2,
+         'gnsqp.eps_regularization': 1e-6, #1e-2,
         'gnsqp.osqp.polish': False,
          'gnsqp.osqp.verbose': False}
 
