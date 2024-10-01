@@ -82,23 +82,24 @@ class steps_phase:
 
         self.action = ""
 
-    def set(self, action):
+    def set(self, action, shift_contacts_plan=True):
 
         self.action = action
         ref_id = self.step_counter % (2 * self.step_nodes)
 
-        # shift contact plan back by one node
-        for j in range(1, self.nodes+1):
-            for i in range(0, self.contact_model * self.number_of_legs):
-                if self.cdot_switch is not None:
-                    self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j-1)
-                if self.cdotxy_tracking_constraint is not None:
-                    self.cdotxy_tracking_constraint[i].setBounds(self.cdotxy_tracking_constraint[i].getLowerBounds(node=j),
-                                                             self.cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j-1)
-                self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j-1)
-                if j < self.nodes:
-                    l, u = self.f[i].getBounds(node=j)
-                    self.f[i].setBounds(l, u, nodes=j-1)
+        if shift_contacts_plan:
+            # shift contact plan back by one node
+            for j in range(1, self.nodes+1):
+                for i in range(0, self.contact_model * self.number_of_legs):
+                    if self.cdot_switch is not None:
+                        self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j-1)
+                    if self.cdotxy_tracking_constraint is not None:
+                        self.cdotxy_tracking_constraint[i].setBounds(self.cdotxy_tracking_constraint[i].getLowerBounds(node=j),
+                                                                 self.cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j-1)
+                    self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j-1)
+                    if j < self.nodes:
+                        l, u = self.f[i].getBounds(node=j)
+                        self.f[i].setBounds(l, u, nodes=j-1)
 
 
         # fill last node of the contact plan
