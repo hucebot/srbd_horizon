@@ -64,7 +64,7 @@ lip.createLIPProblem(lip_params.ns, lip_params.T)
 sqp_opts = dict()
 sqp_opts["gnsqp.max_iter"] = 1
 sqp_opts['gnsqp.osqp.scaled_termination'] = False
-sqp_opts['gnsqp.eps_regularization'] = 1e-3
+sqp_opts['gnsqp.eps_regularization'] = 1e-6
 sqp_opts['gnsqp.osqp.polish'] = False
 sqp_opts['gnsqp.osqp.verbose'] = False
 
@@ -163,6 +163,7 @@ vc_left_foot_upper = full_model.kindyn.frameVelocity("left_foot_upper", cas_kin_
 vc_left_foot_lower = full_model.kindyn.frameVelocity("left_foot_lower", cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)(q=full_model.q, qdot=full_model.qdot)['ee_vel_linear']
 vc_right_foot_upper = full_model.kindyn.frameVelocity("right_foot_upper", cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)(q=full_model.q, qdot=full_model.qdot)['ee_vel_linear']
 vc_right_foot_lower = full_model.kindyn.frameVelocity("right_foot_lower", cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)(q=full_model.q, qdot=full_model.qdot)['ee_vel_linear']
+amom = full_model.kindyn.computeCentroidalDynamics()(q=full_model.q, v=full_model.qdot, a=full_model.qddot)['h_ang']
 full_to_srbd_function = cs.Function("full_to_srbd", [full_model.prb.getState().getVars()],
                                     [cs.vcat([com, # [0:3]
                                      full_model.q[3:7], # [3:7] base orientation
@@ -171,7 +172,7 @@ full_to_srbd_function = cs.Function("full_to_srbd", [full_model.prb.getState().g
                                      c_right_foot_upper, # [13:16]
                                      c_right_foot_lower, # [16:19]
                                      vcom,
-                                     full_model.qdot[3:6],  # base angular velocity
+                                     amom, #full_model.qdot[3:6],  # base angular velocity
                                      vc_left_foot_upper,
                                      vc_left_foot_lower,
                                      vc_right_foot_upper,
