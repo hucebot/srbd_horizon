@@ -25,17 +25,31 @@ import ddp
 from horizon.utils import mat_storer
 import tf
 
+def joy_cb(msg):
+    global joy_msg
+    joy_msg = msg
+
 horizon_ros_utils.roslaunch("srbd_horizon", "model_scheduling.launch")
 time.sleep(3.)
 
-full_params = model_params(ns=5, T=0.25)
-srbd_params = model_params(ns=5, T=0.25)
-lip_params  = model_params(ns=10, T=0.5)
+dt = 0.05
+full_model_ns = 4
+srbd_ns = 8
+lip_ns = 8
+
+
+full_params = model_params(ns=full_model_ns, T=full_model_ns * dt)
+srbd_params = model_params(ns=srbd_ns, T=srbd_ns * dt)
+lip_params  = model_params(ns=lip_ns, T=lip_ns * dt)
 
 rospy.init_node('model_scheduling_test', anonymous=True)
 solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
 joint_state_publisher = rospy.Publisher("joint_states", JointState, queue_size=10)
 rate = rospy.Rate(rospy.get_param("hz", 10)) # 10 Hz
+
+rospy.Subscriber('/joy', Joy, joy_cb)
+global joy_msg
+joy_msg = None
 
 full_model = model_problem.FullBodyProblem("full_model")
 full_model.createFullBodyProblem(full_params.ns, full_params.T, include_transmission_forces=False)
@@ -50,7 +64,7 @@ lip.createLIPProblem(lip_params.ns, lip_params.T)
 sqp_opts = dict()
 sqp_opts["gnsqp.max_iter"] = 1
 sqp_opts['gnsqp.osqp.scaled_termination'] = False
-sqp_opts['gnsqp.eps_regularization'] = 1e-2
+sqp_opts['gnsqp.eps_regularization'] = 1e-3
 sqp_opts['gnsqp.osqp.polish'] = False
 sqp_opts['gnsqp.osqp.verbose'] = False
 
@@ -192,7 +206,143 @@ solution['q'] = utilities.normalize_quaternion_part_horizon(solution['q'], full_
 joint_state_msg = JointState()
 joint_state_msg.name = full_model.kindyn.joint_names()[2:]
 
+import wpg as walking_pattern_generator
+wpg = walking_pattern_generator.steps_phase(srbd.f, lip.c, lip.cdot, lip.initial_foot_position[0][2].__float__(), lip.c_ref, srbd.w_ref, srbd.orientation_tracking_gain, lip.cdot_switch, lip_params.ns, number_of_legs=2,
+                      contact_model=lip.contact_model, cdotxy_tracking_constraint=None)
+
+# create data structures for wpg: copying data to different keys indexed by id
+k = 0
+f = dict()
+c = dict()
+cdot = dict()
+initial_foot_position = dict()
+c_ref = dict()
+#cdot_switch = dict()
+cdotxy_tracking_constraint = dict()
+for foot_frame in full_model.foot_frames:
+    f[k] = full_model.f[foot_frame]
+    c[k] = full_model.c[foot_frame]
+    cdot[k] = full_model.cdot[foot_frame]
+    initial_foot_position[k] = full_model.initial_foot_position[foot_frame]
+    c_ref[k] = full_model.c_ref[foot_frame]
+    #cdot_switch[k] = full_model.cdot_switch[foot_frame]
+    cdotxy_tracking_constraint[k] = full_model.cdotxy_tracking_constraint[foot_frame]
+    k += 1
+full_wpg = walking_pattern_generator.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, full_model.w_ref,
+                      full_model.orientation_tracking_gain, cdot_switch=None, nodes=full_params.ns, number_of_legs=2,
+                      contact_model=full_model.contact_model, cdotxy_tracking_constraint=cdotxy_tracking_constraint)
+
 while not rospy.is_shutdown():
+    #Automatically set initial guess from solution to variables in variables_dict
+    mat_storer.setInitialGuess(variables_dict, solution)
+    solver_sqp.setInitialGuess(full_model.getInitialGuess())
+
+    motion = "standing"
+    rotate = False
+    if joy_msg is not None:
+        if joy_msg.buttons[4]:
+            motion = "walking"
+        elif joy_msg.buttons[5]:
+            motion = "jumping"
+        if joy_msg.buttons[3]:
+            rotate = True
+    else:
+        if keyboard.is_pressed('ctrl'):
+            motion = "walking"
+        if keyboard.is_pressed('space'):
+            motion = "jumping"
+
+    # shift reference velocities back by one node
+    for j in range(1, full_model.ns):
+        full_model.oref.assign(full_model.oref.getValues(nodes=j), nodes=j - 1)
+        full_model.rdot_ref.assign(full_model.rdot_ref.getValues(nodes=j), nodes=j - 1)
+        full_model.w_ref.assign(full_model.w_ref.getValues(nodes=j), nodes=j - 1)
+        for i in range(0, full_model.nc):
+            c_ref[i].assign(c_ref[i].getValues(nodes=j), nodes=j - 1)
+            cdotxy_tracking_constraint[i].setBounds(cdotxy_tracking_constraint[i].getLowerBounds(node=j),
+                                                    cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j - 1)
+            if j < full_model.ns:
+                l, u = f[i].getBounds(node=j)
+                f[i].setBounds(l, u, nodes=j - 1)
+
+
+    for j in range(1, srbd_params.ns):
+        srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
+        srbd.w_ref.assign(srbd.w_ref.getValues(nodes=j), nodes=j - 1)
+        srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
+        for i in range(0, srbd.nc):
+            srbd.cdot_switch[i].assign(srbd.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
+            srbd.c_ref[i].assign(srbd.c_ref[i].getValues(nodes=j), nodes=j - 1)
+
+    srbd.rdot_ref.assign(lip.rdot_ref.getValues(nodes=0), nodes=srbd_params.ns - 1)
+    for i in range(0, srbd.nc):
+        srbd.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
+        srbd.c_ref[i].assign(lip.c_ref[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
+    # w_ref??
+    # oref??
+
+    for j in range(1, lip_params.ns + 1):
+        lip.rdot_ref.assign(lip.rdot_ref.getValues(nodes=j), nodes=j - 1)
+        lip.eta2_p.assign(lip.eta2_p.getValues(nodes=j), nodes=j - 1)
+        for i in range(0, lip.nc):
+            lip.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
+            lip.c_ref[i].assign(lip.c_ref[i].getValues(nodes=j), nodes=j - 1)
+
+    if lip.cdot_switch[0].getValues(lip_params.ns) == 0 and lip.cdot_switch[1].getValues(lip_params.ns) == 0 and lip.cdot_switch[
+        2].getValues(lip_params.ns) == 0 and lip.cdot_switch[3].getValues(lip_params.ns) == 0:
+        lip.eta2_p.assign(0., nodes=lip_params.ns)
+    else:
+        lip.eta2_p.assign(lip.eta2, nodes=lip_params.ns)
+
+    # assign new references based on user input
+    if motion == "standing":
+        alphaX, alphaY = 0.1, 0.1
+    else:
+        alphaX, alphaY = 0.5, 0.5
+
+    if joy_msg is not None:
+        lip.rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=lip_params.ns)
+        # srbd.rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=ns_srbd)
+        # w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=ns)
+        # orientation_tracking_gain.assign(cs.sqrt(1e5) if rotate else 0.)
+    else:
+        axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
+        axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
+
+        lip.rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=lip_params.ns)
+        # w_ref.assign([0, 0, 0], nodes=ns_srbd)
+        # orientation_tracking_gain.assign(0.)
+
+    if motion == "walking":
+        wpg.set("step", shift_contacts_plan=False)
+        full_wpg.set("step", shift_contacts_plan=False)
+    elif motion == "jumping":
+        wpg.set("jump", shift_contacts_plan=False)
+        full_wpg.set("jump", shift_contacts_plan=False)
+    else:
+        wpg.set("standing", shift_contacts_plan=False)
+        full_wpg.set("standing", shift_contacts_plan=False)
+
+
+    #open loop
+    full_model.q.setBounds(solution['q'][:, 1], solution['q'][:, 1], 0)
+    full_model.qdot.setBounds(solution['qdot'][:, 1], solution['qdot'][:, 1], 0)
+
+    solver_sqp.updateBounds()
+    solver_sqp.updateConstraints()
+
+    # solve
+    tic()
+    meta_solver.solve()
+    solution_time_pub.publish(toc())
+
+    solution = meta_solver.getSolutionDict()
+    srbd_solution = meta_solver.getSolutionModel(1)
+    lip_solution = meta_solver.getSolutionModel(2)
+
+    solution['q'] = utilities.normalize_quaternion_part_horizon(solution['q'], full_model.ns)
+
+
     t = rospy.Time.now()
 
     lip_input = lip_solution["u_opt"][:, 0]
@@ -235,70 +385,5 @@ while not rospy.is_shutdown():
                                 topic='fm_fc' + str(i))
         viz.publishPointTrj(c[full_model.foot_frames[i]], t, 'fm_c' + str(i), "world", color=[0., 0., 1.])
 
-# while not rospy.is_shutdown():
-#     """
-#     Automatically set initial guess from solution to variables in variables_dict
-#     """
-#     mat_storer.setInitialGuess(variables_dict, solution)
-#     solver_sqp.setInitialGuess(full_model.getInitialGuess())
-#
-#     #open loop
-#     full_model.q.setBounds(solution['q'][:, 1], solution['q'][:, 1], 0)
-#     full_model.qdot.setBounds(solution['qdot'][:, 1], solution['qdot'][:, 1], 0)
-#
-#     solver_sqp.updateBounds()
-#     solver_sqp.updateConstraints()
-#
-#     # solve
-#     tic()
-#     meta_solver.solve()
-#     solution_time_pub.publish(toc())
-#
-#     solution = meta_solver.getSolutionDict()
-#     srbd_solution = meta_solver.getSolutionModel(1)
-#     lip_solution = meta_solver.getSolutionModel(2)
-#
-#     solution['q'] = utilities.normalize_quaternion_part_horizon(solution['q'], full_model.ns)
-#
-#
-#
-#
-
-#
-
-#
-#     # publish contact forces and contact points
-#     c = dict()
-#     for foot_frame in full_model.foot_frames:
-#         C = full_model.kindyn.fk(foot_frame)
-#         c[foot_frame] = np.zeros((3, full_model.ns + 1))
-#         for i in range(0, full_model.ns + 1):
-#             c[foot_frame][:, i] = C(q=solution['q'][:, i])['ee_pos'].toarray().flatten()
-#     for i in range(0, full_model.nc):
-#         viz.publishContactForce(t, solution['f_' + full_model.foot_frames[i]][:, 0], frame=full_model.foot_frames[i],
-#                                 topic='fc' + str(i))
-#         viz.publishPointTrj(c[full_model.foot_frames[i]], t, 'c' + str(i), "world", color=[0., 0., 1.])
-#
-#     # publish center of mass
-#     COM = full_model.kindyn.centerOfMass()
-#     com = np.zeros((3, full_model.ns + 1))
-#     for i in range(0, full_model.ns + 1):
-#         com[:, i] = COM(q=solution['q'][:, i])['com'].toarray().flatten()
-#     viz.publishPointTrj(com, t, "SRB", "world")
-#
-#     rate.sleep()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    rate.sleep()
 
