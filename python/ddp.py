@@ -327,9 +327,19 @@ class SQPSolver(Solver):
 
         # generate problem to be solver
         var_list = list()
+        for k in range(0, prb.getNNodes()-1):
+            for var in prb.var_container.getVarList(offset=False):
+                var_list.append(var.getImpl()[:, k])
+        is_state = lambda x: x == prb.getNNodes()
         for var in prb.var_container.getVarList(offset=False):
-            var_list.append(var.getImpl())
-        w = cs.veccat(*var_list)  #
+            if is_state(var.getImpl().size2()):
+                var_list.append(var.getImpl()[:, prb.getNNodes()-1])
+        w = cs.veccat(*var_list)
+
+        print(f"\n \n \n {w.print_vector(False)}")
+        exit()
+
+
 
         fun_list = list()
         for fun in prb.function_container.getCnstr().values():
