@@ -337,17 +337,17 @@ class SQPSolver(Solver):
         w = cs.veccat(*var_list)
         #print(w.print_vector(False))
 
-        # fun_list = list()
-        # for n in range(0, prb.getNNodes()):
-        #     for fun in prb.function_container.getCnstr().values():
-        #         if n < fun.getImpl().size2():
-        #             fun_list.append(fun.getImpl()[:, n])
-        # g = cs.veccat(*fun_list)
-
         fun_list = list()
-        for fun in prb.function_container.getCnstr().values():
-            fun_list.append(fun.getImpl())
+        for n in range(0, prb.getNNodes()):
+            for fun in prb.function_container.getCnstr().values():
+                if n < fun.getImpl().size2():
+                    fun_list.append(fun.getImpl()[:, n])
         g = cs.veccat(*fun_list)
+
+        # fun_list = list()
+        # for fun in prb.function_container.getCnstr().values():
+        #     fun_list.append(fun.getImpl())
+        # g = cs.veccat(*fun_list)
 
         # todo: residual, recedingResidual should be the same class
         # sqp only supports residuals, warn the user otherwise
@@ -435,8 +435,22 @@ class SQPSolver(Solver):
         return lbw, ubw
 
     def updateConstraints(self, update_solver=True):
-        lbg = np.array(self._getFunList('lb'), dtype=np.float64).flatten()
-        ubg = np.array(self._getFunList('ub'), dtype=np.float64).flatten()
+        #lbg = np.array(self._getFunList('lb'), dtype=np.float64).flatten()
+        #ubg = np.array(self._getFunList('ub'), dtype=np.float64).flatten()
+
+        lbg = np.zeros((self._getFunList('lb').size1(), 1))
+        ubg = np.zeros((self._getFunList('ub').size1(), 1))
+
+        s = 0
+        for n in range(0, self.prb.getNNodes()):
+            for cnstr in self.prb.function_container.getCnstr():
+                l = self.prb.function_container.getCnstr()[cnstr].getLowerBounds()
+                u = self.prb.function_container.getCnstr()[cnstr].getUpperBounds()
+                if n < l.shape[1]:
+                    lbg[s:s+l.shape[0], 0] = l[:, n]
+                    ubg[s:s+u.shape[0], 0] = u[:, n]
+                    s += l.shape[0]
+
         if update_solver:
             self.solver.updateConstraints(lbg, ubg)
 
