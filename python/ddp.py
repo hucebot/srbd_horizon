@@ -398,24 +398,81 @@ class SQPSolver(Solver):
     def setInitialGuess(self, w_guess):
         self.solver.setInitialGuess(w_guess)
 
-    def updateBounds(self):
-        lbw = np.array(self._getVarList('lb'), dtype=np.float64).flatten()
-        ubw = np.array(self._getVarList('ub'), dtype=np.float64).flatten()
-        self.solver.updateBounds(lbw, ubw)
+    def updateBounds(self, update_solver=True):
+        #lbw = np.array(self._getVarList('lb'), dtype=np.float64).flatten()
+        #ubw = np.array(self._getVarList('ub'), dtype=np.float64).flatten()
 
-    def updateConstraints(self):
+
+        lbw_list = list()
+        ubw_list = list()
+        for k in range(0, self.prb.getNNodes() - 1):
+            for var in self.prb.var_container.getVarList(offset=False):
+                lb = var.getLowerBounds()
+                ub = var.getUpperBounds()
+                lbw_list.append(lb[:, k])
+                ubw_list.append(ub[:, k])
+        is_state = lambda x: x == self.prb.getNNodes()
+        for var in self.prb.var_container.getVarList(offset=False):
+            lb = var.getLowerBounds()
+            ub = var.getUpperBounds()
+            if is_state(lb.shape[1]):
+                lbw_list.append(lb[:, self.prb.getNNodes() - 1])
+                ubw_list.append(ub[:, self.prb.getNNodes() - 1])
+
+        lbw = np.concatenate(lbw_list)
+        ubw = np.concatenate(ubw_list)
+
+        if update_solver:
+            self.solver.updateBounds(lbw, ubw)
+
+        return lbw, ubw
+
+    def updateConstraints(self, update_solver=True):
         lbg = np.array(self._getFunList('lb'), dtype=np.float64).flatten()
         ubg = np.array(self._getFunList('ub'), dtype=np.float64).flatten()
-        self.solver.updateConstraints(lbg, ubg)
+        if update_solver:
+            self.solver.updateConstraints(lbg, ubg)
+
+        return lbg, ubg
+
+    def createVarSolDict(self, sol):
+        state_size = self.prb.getState().getVars().size()[0]
+        input_size = self.prb.getInput().getVars().size()[0]
+
+        self.x_opt = np.zeros((state_size, self.prb.getNNodes()))
+        self.u_opt = np.zeros((input_size, self.prb.getNNodes()-1))
+
+        for n in range(0, self.prb.getNNodes() - 1):
+            node = sol["x"][n*(state_size + input_size):(n+1)*(state_size + input_size)]
+            self.x_opt[:, n] = node[0:state_size]
+            self.u_opt[:, n] = node[state_size:(state_size + input_size)]
+        self.x_opt[:, -1] = sol["x"][-state_size:]
+
+        pos = 0
+        for state in self.prb.getState().var_list:
+            name = state.getName()
+            dim = state.getDim()
+            self.var_solution[name] = np.zeros((dim, self.prb.getNNodes()))
+            for n in range(0, self.prb.getNNodes()):
+                self.var_solution[name][:, n] = self.x_opt[pos: pos + dim, n]
+            pos += dim
+
+        pos = 0
+        for input in self.prb.getInput().var_list:
+            name = input.getName()
+            dim = input.getDim()
+            self.var_solution[name] = np.zeros((dim, self.prb.getNNodes()-1))
+            for n in range(0, self.prb.getNNodes()-1):
+                self.var_solution[name][:, n] = self.u_opt[pos: pos + dim, n]
+            pos += dim
+
     def solve(self) -> bool:
 
         # update lower/upper bounds of variables
-        lbw = np.array(self._getVarList('lb'), dtype=np.float64).flatten()
-        ubw = np.array(self._getVarList('ub'), dtype=np.float64).flatten()
+        lbw, ubw = self.updateBounds(update_solver=False)
 
         # update lower/upper bounds of constraints
-        lbg = np.array(self._getFunList('lb'), dtype=np.float64).flatten()
-        ubg = np.array(self._getFunList('ub'), dtype=np.float64).flatten()
+        lbg, ubg = self.updateConstraints(update_solver=False)
 
         # update parameters
         p = self._getParList()
@@ -425,17 +482,18 @@ class SQPSolver(Solver):
 
         # solve
         sol = self.solver.solve(p=p, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg)
+        self.createVarSolDict(sol)
 
         # get solution dict
-        self.var_solution = self._createVarSolDict(sol)
+        #self.var_solution = self._createVarSolDict(sol)
         self.var_solution['x_opt'] = self.x_opt
         self.var_solution['u_opt'] = self.u_opt
 
         # get solution as state/input
-        self._createVarSolAsInOut(sol)
+        #self._createVarSolAsInOut(sol)
 
         # build dt_solution as an array
-        self._createDtSol()
+        #self._createDtSol()
 
         return True
 
