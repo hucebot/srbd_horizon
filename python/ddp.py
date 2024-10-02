@@ -337,7 +337,12 @@ class SQPSolver(Solver):
         w = cs.veccat(*var_list)
         #print(w.print_vector(False))
 
-
+        # fun_list = list()
+        # for n in range(0, prb.getNNodes()):
+        #     for fun in prb.function_container.getCnstr().values():
+        #         if n < fun.getImpl().size2():
+        #             fun_list.append(fun.getImpl()[:, n])
+        # g = cs.veccat(*fun_list)
 
         fun_list = list()
         for fun in prb.function_container.getCnstr().values():
@@ -347,16 +352,18 @@ class SQPSolver(Solver):
         # todo: residual, recedingResidual should be the same class
         # sqp only supports residuals, warn the user otherwise
         fun_list = list()
-        for fun in self.fun_container.getCost().values():
-            fun_to_append = fun.getImpl()
-            if fun_to_append is not None:
-                if type(fun) in (Cost, RecedingCost):
-                    print('warning: sqp solver does not support costs that are not residuals')
-                    fun_list.append(fun_to_append[:])
-                elif type(fun) in (Residual, RecedingResidual):
-                    fun_list.append(fun_to_append[:])
-                else:
-                    raise Exception('wrong type of function found in fun_container')
+        for n in range(0, prb.getNNodes()):
+            for fun in self.fun_container.getCost().values():
+                if n < fun.getImpl().size2():
+                    fun_to_append = fun.getImpl()[:, n]
+                if fun_to_append is not None:
+                    if type(fun) in (Cost, RecedingCost):
+                        print('warning: sqp solver does not support costs that are not residuals')
+                        fun_list.append(fun_to_append[:])
+                    elif type(fun) in (Residual, RecedingResidual):
+                        fun_list.append(fun_to_append[:])
+                    else:
+                        raise Exception('wrong type of function found in fun_container')
 
         f = cs.veccat(*fun_list)
 
