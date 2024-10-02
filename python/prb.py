@@ -348,11 +348,19 @@ class FullBodyProblem:
 
     def getInitialGuess(self):
         var_list = list()
+        NNodes = self.ns + 1
+        for k in range(0, NNodes - 1):
+            for var in self.prb.var_container.getVarList(offset=False):
+                retriever = var.getInitialGuess()
+                var_list.append(retriever[:, k])
+        is_state = lambda x: x == NNodes
         for var in self.prb.var_container.getVarList(offset=False):
             retriever = var.getInitialGuess()
-            var_list.append(retriever.flatten(order='F'))
-
+            if is_state(retriever.shape[1]):
+                var_list.append(retriever[:, NNodes - 1])
         v = cs.vertcat(*var_list)
+
+        #print(v.print_vector(False))
         return v
 
 class SRBDProblem:
