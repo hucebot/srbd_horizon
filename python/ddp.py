@@ -335,9 +335,7 @@ class SQPSolver(Solver):
             if is_state(var.getImpl().size2()):
                 var_list.append(var.getImpl()[:, prb.getNNodes()-1])
         w = cs.veccat(*var_list)
-
-        print(f"\n \n \n {w.print_vector(False)}")
-        exit()
+        #print(w.print_vector(False))
 
 
 
