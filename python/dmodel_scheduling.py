@@ -2,6 +2,7 @@
 import logging
 
 import time
+import scipy
 from horizon.ros import utils as horizon_ros_utils
 from ttictoc import tic,toc
 from geometry_msgs.msg import WrenchStamped
@@ -108,7 +109,7 @@ import wpg
 wpg = wpg.steps_phase(srbd.f, lip.c, lip.cdot, lip.initial_foot_position[0][2].__float__(), lip.c_ref, srbd.w_ref, srbd.orientation_tracking_gain, lip.cdot_switch, ns_lip, number_of_legs=2,
                       contact_model=lip.contact_model, cdotxy_tracking_constraint=None)
 
-
+solution_time_vec = []
 while not rospy.is_shutdown():
 
     meta_solver.setInitialState(srbd_state)
@@ -190,7 +191,9 @@ while not rospy.is_shutdown():
     # solve
     tic()
     meta_solver.solve()
-    solution_time_pub.publish(toc())
+    solution_time = toc()
+    solution_time_pub.publish(solution_time)
+    solution_time_vec.append(solution_time)
     solution = meta_solver.getSolutionDict()
 
     lip_solution = meta_solver.getSolutionModel(1)
@@ -262,3 +265,5 @@ while not rospy.is_shutdown():
                t)
 
     rate.sleep()
+
+scipy.io.savemat('model_scheduling_solution_time.mat', {'solution_time': np.array(solution_time_vec)})

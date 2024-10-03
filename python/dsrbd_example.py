@@ -2,6 +2,7 @@
 import logging
 
 import time
+import scipy
 from horizon.ros import utils as horizon_ros_utils
 from ttictoc import tic,toc
 from geometry_msgs.msg import WrenchStamped
@@ -79,6 +80,7 @@ simulation_euler_integrator = solver.get_f(0)
 wpg = wpg.steps_phase(srbd.f, srbd.c, srbd.cdot, srbd.initial_foot_position[0][2].__float__(), srbd.c_ref, srbd.w_ref, srbd.orientation_tracking_gain, srbd.cdot_switch, ns, number_of_legs=2,
                       contact_model=srbd.contact_model, cdotxy_tracking_constraint=None)
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
+solution_time_vec = []
 while not rospy.is_shutdown():
 
     solver.setInitialState(state)
@@ -133,7 +135,9 @@ while not rospy.is_shutdown():
     # solve
     tic()
     solver.solve()
-    solution_time_pub.publish(toc())
+    solution_time = toc()
+    solution_time_pub.publish(solution_time)
+    solution_time_vec.append(solution_time)
     solution = solver.getSolutionDict()
 
     c0_hist = dict()
@@ -183,3 +187,5 @@ while not rospy.is_shutdown():
                t)
 
     rate.sleep()
+
+scipy.io.savemat('dsrbd_solution_time.mat', {'solution_time': np.array(solution_time_vec)})

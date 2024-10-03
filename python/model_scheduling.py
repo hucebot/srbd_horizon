@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 import logging
 
+import horizon.utils.utils
+
+
 class model_params:
     def __init__(self, ns, T):
         self.ns = ns
         self.T = T
 
 import time
+import scipy
 from horizon.ros import utils as horizon_ros_utils
 from ttictoc import tic,toc
 from geometry_msgs.msg import WrenchStamped
@@ -66,7 +70,7 @@ sqp_opts["gnsqp.max_iter"] = 1
 sqp_opts['gnsqp.osqp.scaled_termination'] = False
 sqp_opts['gnsqp.eps_regularization'] = 1e-6
 sqp_opts['gnsqp.osqp.polish'] = False
-sqp_opts['gnsqp.osqp.verbose'] = False
+sqp_opts['gnsqp.osqp.verbose'] = True
 
 solver_sqp = ddp.SQPSolver(full_model.prb, qp_solver_plugin='osqp', opts=sqp_opts)
 full_model.q.setInitialGuess(full_model.getInitialState()[0:full_model.nq])
@@ -163,7 +167,9 @@ vc_left_foot_upper = full_model.kindyn.frameVelocity("left_foot_upper", cas_kin_
 vc_left_foot_lower = full_model.kindyn.frameVelocity("left_foot_lower", cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)(q=full_model.q, qdot=full_model.qdot)['ee_vel_linear']
 vc_right_foot_upper = full_model.kindyn.frameVelocity("right_foot_upper", cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)(q=full_model.q, qdot=full_model.qdot)['ee_vel_linear']
 vc_right_foot_lower = full_model.kindyn.frameVelocity("right_foot_lower", cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)(q=full_model.q, qdot=full_model.qdot)['ee_vel_linear']
-amom = full_model.kindyn.computeCentroidalDynamics()(q=full_model.q, v=full_model.qdot, a=full_model.qddot)['h_ang']
+
+w_R_b = horizon.utils.utils.toRot(full_model.q[3:7])
+
 full_to_srbd_function = cs.Function("full_to_srbd", [full_model.prb.getState().getVars()],
                                     [cs.vcat([com, # [0:3]
                                      full_model.q[3:7], # [3:7] base orientation
@@ -172,7 +178,7 @@ full_to_srbd_function = cs.Function("full_to_srbd", [full_model.prb.getState().g
                                      c_right_foot_upper, # [13:16]
                                      c_right_foot_lower, # [16:19]
                                      vcom,
-                                     amom, #full_model.qdot[3:6],  # base angular velocity
+                                     w_R_b.T@full_model.qdot[3:6],  # base angular velocity
                                      vc_left_foot_upper,
                                      vc_left_foot_lower,
                                      vc_right_foot_upper,
@@ -233,6 +239,7 @@ full_wpg = walking_pattern_generator.steps_phase(f, c, cdot, initial_foot_positi
                       full_model.orientation_tracking_gain, cdot_switch=None, nodes=full_params.ns, number_of_legs=2,
                       contact_model=full_model.contact_model, cdotxy_tracking_constraint=cdotxy_tracking_constraint)
 
+solution_time_vec = []
 while not rospy.is_shutdown():
     #Automatically set initial guess from solution to variables in variables_dict
     mat_storer.setInitialGuess(variables_dict, solution)
@@ -335,7 +342,9 @@ while not rospy.is_shutdown():
     # solve
     tic()
     meta_solver.solve()
-    solution_time_pub.publish(toc())
+    solution_time = toc()
+    solution_time_pub.publish(solution_time)
+    solution_time_vec.append(solution_time)
 
     solution = meta_solver.getSolutionDict()
     srbd_solution = meta_solver.getSolutionModel(1)
@@ -388,3 +397,4 @@ while not rospy.is_shutdown():
 
     rate.sleep()
 
+scipy.io.savemat('model_scheduling_solution_time.mat', {'solution_time': np.array(solution_time_vec)})
