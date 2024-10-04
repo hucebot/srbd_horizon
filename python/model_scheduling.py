@@ -37,9 +37,9 @@ horizon_ros_utils.roslaunch("srbd_horizon", "model_scheduling.launch")
 time.sleep(3.)
 
 dt = 0.05
-full_model_ns = 4
-srbd_ns = 8
-lip_ns = 8
+full_model_ns = 6
+srbd_ns = 7
+lip_ns = 7
 
 
 full_params = model_params(ns=full_model_ns, T=full_model_ns * dt)
@@ -68,9 +68,10 @@ lip.createLIPProblem(lip_params.ns, lip_params.T)
 sqp_opts = dict()
 sqp_opts["gnsqp.max_iter"] = 1
 sqp_opts['gnsqp.osqp.scaled_termination'] = False
-sqp_opts['gnsqp.eps_regularization'] = 1e-6
+sqp_opts['gnsqp.eps_regularization'] = 1e-2
 sqp_opts['gnsqp.osqp.polish'] = False
-sqp_opts['gnsqp.osqp.verbose'] = True
+sqp_opts['gnsqp.osqp.verbose'] = False
+sqp_opts['gnsqp.osqp.linsys_solver_mkl_pardiso'] = True
 
 solver_sqp = ddp.SQPSolver(full_model.prb, qp_solver_plugin='osqp', opts=sqp_opts)
 full_model.q.setInitialGuess(full_model.getInitialState()[0:full_model.nq])
@@ -86,10 +87,6 @@ if full_model.include_transmission_forces:
 solver_sqp.setInitialGuess(full_model.getInitialGuess())
 X, U = full_model.getStateInputMappingMatrices()
 solver_sqp.setStateInputMapping(X, U)
-P = full_model.getVarStateMappingMatrix()
-solver_sqp.setVariableStateMapping(P)
-O = full_model.getVarInputMappingMatrix()
-solver_sqp.setVariableInputMapping(O)
 
 variables_dict = {"q": full_model.q, "qdot": full_model.qdot, "qddot": full_model.qddot}
 if full_model.include_transmission_forces:
