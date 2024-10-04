@@ -48,8 +48,9 @@ import ddp
 
 opts = {"gnsqp.max_iter": max_iteration,
          'gnsqp.osqp.scaled_termination': False,
-         'gnsqp.eps_regularization': 1e-6, #1e-2,
+         'gnsqp.eps_regularization': 1e-2, #1e-2,
         'gnsqp.osqp.polish': False,
+        'gnsqp.osqp.linsys_solver_mkl_pardiso': True,
          'gnsqp.osqp.verbose': False}
 
 solver = ddp.SQPSolver(full_model.prb, qp_solver_plugin='osqp', opts=opts)
