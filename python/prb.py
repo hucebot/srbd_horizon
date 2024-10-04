@@ -79,12 +79,12 @@ class FullBodyProblem:
 
         qdot = prb.createStateVariable("qdot", kindyn.nv())
         lims = np.ones(kindyn.nv())
-        qdot.setBounds(-100. * lims, 100. * lims)
+        qdot.setBounds(-10. * lims, 10. * lims)
 
 
         # create input
         qddot = prb.createInputVariable("qddot", kindyn.nv())
-        #qddot.setBounds(-10000. * lims, 10000. * lims)
+        qddot.setBounds(-10. * lims, 10. * lims)
 
         contact_model = get_parm_from_paramserver("contact_model", self.namespace, 4)
         number_of_legs = get_parm_from_paramserver("number_of_legs", self.namespace, 2)
@@ -283,43 +283,12 @@ class FullBodyProblem:
         state_mapping_matrix = np.zeros((n * (N + 1), (n + m) * N + n))
         input_mapping_matrix = np.zeros((m * N, (n + m) * N + n))
 
-        state_mapping_matrix[0:n*(N+1), 0:n*(N+1)] = np.identity(n*(N+1))
-        input_mapping_matrix[0:m*N, n*(N+1):n*(N+1)+m*N] = np.identity(m*N)
+        for k in range(0, N+1):
+            state_mapping_matrix[k*n:k*n+n, k*(n+m):k*(n+m)+n] = np.identity(n)
+            if k < N:
+                input_mapping_matrix[k*m:k*m+m, k*(n+m)+n:k*(n+m)+n+m] = np.identity(m)
 
         return state_mapping_matrix, input_mapping_matrix
-
-    def getVarStateMappingMatrix(self):
-        N = self.ns
-        n = self.nq + self.nv
-
-        Q = np.zeros((self.nq * (N + 1), n * (N + 1)))
-        Q[:, 0:self.nq*(N+1)] = np.identity(self.nq*(N+1))
-
-        V = np.zeros((self.nv * (N + 1), n * (N + 1)))
-        V[:, self.nq * (N + 1):] = np.identity(self.nv * (N + 1))
-
-        return [Q, V]
-
-    def getVarInputMappingMatrix(self):
-        N = self.ns
-        lambda_size = 0
-        if self.include_transmission_forces:
-            lambda_size = 4
-        m = 3 * self.nc + self.nv + lambda_size
-
-        A = np.zeros((self.nv * N, m * N))
-        A[:, 0:self.nv*N] = np.identity(self.nv*N)
-
-        F = np.zeros((3 * self.nc * N, m * N))
-        F[:, self.nv*N:] = np.identity(3 * self.nc * N)
-
-        O = [A, F]
-        if lambda_size != 0:
-            L = np.zeros((lambda_size * N, m * N))
-            L[:, self.nv * N + 3 * self.nc * N:] = np.identity(lambda_size * N)
-            O.append(L)
-
-        return O
 
     def getInitialState(self):
         return np.concatenate((self.joint_init, np.zeros(self.nv)), axis=0)
