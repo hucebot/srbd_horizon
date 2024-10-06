@@ -37,7 +37,7 @@ horizon_ros_utils.roslaunch("srbd_horizon", "model_scheduling.launch")
 time.sleep(3.)
 
 dt = 0.05
-full_model_ns = 6
+full_model_ns = 20 #6
 srbd_ns = 7
 lip_ns = 7
 
@@ -187,10 +187,10 @@ srbd_to_lip_function = cs.Function("srbd_to_lip", [srbd.prb.getState().getVars()
                                              srbd.prb.getState().getVars()[7:19], # contacts
                                              srbd.prb.getState().getVars()[19:22], # vcom
                                              srbd.prb.getState().getVars()[25:37]])]) # vcontacts
-meta_solver.add(solver_srbd, srbd_to_lip_function)
+#meta_solver.add(solver_srbd, srbd_to_lip_function)
 
 foo_mapping_function = cs.Function("foo", [lip.prb.getState().getVars()], [cs.DM.zeros(1, 1)])
-meta_solver.add(solver_lip, foo_mapping_function)
+#meta_solver.add(solver_lip, foo_mapping_function)
 
 #meta_solver.setInitialState(full_model.getInitialState()) # this is not used when first solver is SQP, x0 is set through constraints!
 
@@ -200,10 +200,9 @@ solver_sqp.updateConstraints()
 
 meta_solver.solve()
 
-#solution = meta_solver.getSolutionDict()
 solution = meta_solver.getSolutionModel(0)
-srbd_solution = meta_solver.getSolutionModel(1)
-lip_solution = meta_solver.getSolutionModel(2)
+#srbd_solution = meta_solver.getSolutionModel(1)
+#lip_solution = meta_solver.getSolutionModel(2)
 
 solution['q'] = utilities.normalize_quaternion_part_horizon(solution['q'], full_model.ns)
 
@@ -258,46 +257,46 @@ while not rospy.is_shutdown():
             motion = "jumping"
 
     # shift reference velocities back by one node
-    for j in range(1, full_model.ns):
-        full_model.oref.assign(full_model.oref.getValues(nodes=j), nodes=j - 1)
-        full_model.rdot_ref.assign(full_model.rdot_ref.getValues(nodes=j), nodes=j - 1)
-        full_model.w_ref.assign(full_model.w_ref.getValues(nodes=j), nodes=j - 1)
-        for i in range(0, full_model.nc):
-            c_ref[i].assign(c_ref[i].getValues(nodes=j), nodes=j - 1)
-            cdotxy_tracking_constraint[i].setBounds(cdotxy_tracking_constraint[i].getLowerBounds(node=j),
-                                                    cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j - 1)
-            if j < full_model.ns:
-                l, u = f[i].getBounds(node=j)
-                f[i].setBounds(l, u, nodes=j - 1)
-
-
-    for j in range(1, srbd_params.ns):
-        srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
-        srbd.w_ref.assign(srbd.w_ref.getValues(nodes=j), nodes=j - 1)
-        srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
-        for i in range(0, srbd.nc):
-            srbd.cdot_switch[i].assign(srbd.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
-            srbd.c_ref[i].assign(srbd.c_ref[i].getValues(nodes=j), nodes=j - 1)
-
-    srbd.rdot_ref.assign(lip.rdot_ref.getValues(nodes=0), nodes=srbd_params.ns - 1)
-    for i in range(0, srbd.nc):
-        srbd.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
-        srbd.c_ref[i].assign(lip.c_ref[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
-    # w_ref??
-    # oref??
-
-    for j in range(1, lip_params.ns + 1):
-        lip.rdot_ref.assign(lip.rdot_ref.getValues(nodes=j), nodes=j - 1)
-        lip.eta2_p.assign(lip.eta2_p.getValues(nodes=j), nodes=j - 1)
-        for i in range(0, lip.nc):
-            lip.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
-            lip.c_ref[i].assign(lip.c_ref[i].getValues(nodes=j), nodes=j - 1)
-
-    if lip.cdot_switch[0].getValues(lip_params.ns) == 0 and lip.cdot_switch[1].getValues(lip_params.ns) == 0 and lip.cdot_switch[
-        2].getValues(lip_params.ns) == 0 and lip.cdot_switch[3].getValues(lip_params.ns) == 0:
-        lip.eta2_p.assign(0., nodes=lip_params.ns)
-    else:
-        lip.eta2_p.assign(lip.eta2, nodes=lip_params.ns)
+    # for j in range(1, full_model.ns):
+    #     full_model.oref.assign(full_model.oref.getValues(nodes=j), nodes=j - 1)
+    #     full_model.rdot_ref.assign(full_model.rdot_ref.getValues(nodes=j), nodes=j - 1)
+    #     full_model.w_ref.assign(full_model.w_ref.getValues(nodes=j), nodes=j - 1)
+    #     for i in range(0, full_model.nc):
+    #         c_ref[i].assign(c_ref[i].getValues(nodes=j), nodes=j - 1)
+    #         cdotxy_tracking_constraint[i].setBounds(cdotxy_tracking_constraint[i].getLowerBounds(node=j),
+    #                                                 cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j - 1)
+    #         if j < full_model.ns:
+    #             l, u = f[i].getBounds(node=j)
+    #             f[i].setBounds(l, u, nodes=j - 1)
+    #
+    #
+    # for j in range(1, srbd_params.ns):
+    #     srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
+    #     srbd.w_ref.assign(srbd.w_ref.getValues(nodes=j), nodes=j - 1)
+    #     srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
+    #     for i in range(0, srbd.nc):
+    #         srbd.cdot_switch[i].assign(srbd.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
+    #         srbd.c_ref[i].assign(srbd.c_ref[i].getValues(nodes=j), nodes=j - 1)
+    #
+    # srbd.rdot_ref.assign(lip.rdot_ref.getValues(nodes=0), nodes=srbd_params.ns - 1)
+    # for i in range(0, srbd.nc):
+    #     srbd.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
+    #     srbd.c_ref[i].assign(lip.c_ref[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
+    # # w_ref??
+    # # oref??
+    #
+    # for j in range(1, lip_params.ns + 1):
+    #     lip.rdot_ref.assign(lip.rdot_ref.getValues(nodes=j), nodes=j - 1)
+    #     lip.eta2_p.assign(lip.eta2_p.getValues(nodes=j), nodes=j - 1)
+    #     for i in range(0, lip.nc):
+    #         lip.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
+    #         lip.c_ref[i].assign(lip.c_ref[i].getValues(nodes=j), nodes=j - 1)
+    #
+    # if lip.cdot_switch[0].getValues(lip_params.ns) == 0 and lip.cdot_switch[1].getValues(lip_params.ns) == 0 and lip.cdot_switch[
+    #     2].getValues(lip_params.ns) == 0 and lip.cdot_switch[3].getValues(lip_params.ns) == 0:
+    #     lip.eta2_p.assign(0., nodes=lip_params.ns)
+    # else:
+    #     lip.eta2_p.assign(lip.eta2, nodes=lip_params.ns)
 
     # assign new references based on user input
     if motion == "standing":
@@ -320,13 +319,13 @@ while not rospy.is_shutdown():
 
     if motion == "walking":
         wpg.set("step", shift_contacts_plan=False)
-        full_wpg.set("step", shift_contacts_plan=False)
+        full_wpg.set("step", shift_contacts_plan=True)
     elif motion == "jumping":
         wpg.set("jump", shift_contacts_plan=False)
-        full_wpg.set("jump", shift_contacts_plan=False)
+        full_wpg.set("jump", shift_contacts_plan=True)
     else:
         wpg.set("standing", shift_contacts_plan=False)
-        full_wpg.set("standing", shift_contacts_plan=False)
+        full_wpg.set("standing", shift_contacts_plan=True)
 
 
     #open loop
@@ -344,32 +343,32 @@ while not rospy.is_shutdown():
     solution_time_vec.append(solution_time)
 
     solution = meta_solver.getSolutionDict()
-    srbd_solution = meta_solver.getSolutionModel(1)
-    lip_solution = meta_solver.getSolutionModel(2)
+    #srbd_solution = meta_solver.getSolutionModel(1)
+    #lip_solution = meta_solver.getSolutionModel(2)
 
     solution['q'] = utilities.normalize_quaternion_part_horizon(solution['q'], full_model.ns)
 
 
     t = rospy.Time.now()
 
-    lip_input = lip_solution["u_opt"][:, 0]
-    lip_state = lip_solution["x_opt"][:, 0]
-    utilities.ZMPTfBroadcaster(lip_solution['z'][:, 0], t)
-    rddot0 = lip.RDDOT(lip_state, lip_input, solver_lip.get_params_value(0))
-    fzmp = lip.m * (np.array([0., 0., 9.81]) + rddot0)
-    viz.publishContactForce(t, fzmp, 'ZMP')
-    viz.publishPointTrj(lip_solution["r"], t, name="COM", frame="world", color=[1., 1., 0.], namespace="LIP")
-    viz.publishPointTrj(lip_solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
-
-    c0_hist = dict()
-    for i in range(0, srbd.nc):
-        c0_hist['c' + str(i)] = srbd_solution['c' + str(i)][:, 0]
-    utilities.SRBDTfBroadcaster(srbd_solution['r'][:, 0], srbd_solution['o'][:, 0], c0_hist, t)
-    for i in range(0, srbd.nc):
-        viz.publishContactForce(t, srbd.force_scaling * srbd_solution['f' + str(i)][:, 0], 'c' + str(i))
-        viz.publishPointTrj(srbd_solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-    viz.SRBDViewer(srbd.I, "SRB", t, srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
-    viz.publishPointTrj(srbd_solution["r"], t, "SRB", "world")
+    # lip_input = lip_solution["u_opt"][:, 0]
+    # lip_state = lip_solution["x_opt"][:, 0]
+    # utilities.ZMPTfBroadcaster(lip_solution['z'][:, 0], t)
+    # rddot0 = lip.RDDOT(lip_state, lip_input, solver_lip.get_params_value(0))
+    # fzmp = lip.m * (np.array([0., 0., 9.81]) + rddot0)
+    # viz.publishContactForce(t, fzmp, 'ZMP')
+    # viz.publishPointTrj(lip_solution["r"], t, name="COM", frame="world", color=[1., 1., 0.], namespace="LIP")
+    # viz.publishPointTrj(lip_solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
+    #
+    # c0_hist = dict()
+    # for i in range(0, srbd.nc):
+    #     c0_hist['c' + str(i)] = srbd_solution['c' + str(i)][:, 0]
+    # utilities.SRBDTfBroadcaster(srbd_solution['r'][:, 0], srbd_solution['o'][:, 0], c0_hist, t)
+    # for i in range(0, srbd.nc):
+    #     viz.publishContactForce(t, srbd.force_scaling * srbd_solution['f' + str(i)][:, 0], 'c' + str(i))
+    #     viz.publishPointTrj(srbd_solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
+    # viz.SRBDViewer(srbd.I, "SRB", t, srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
+    # viz.publishPointTrj(srbd_solution["r"], t, "SRB", "world")
 
     # publish tf
     br = tf.TransformBroadcaster()
