@@ -1,12 +1,11 @@
 import numpy as np
 
 class steps_phase:
-    def __init__(self, nodes, number_of_legs, contact_model, c_init_z):
+    def __init__(self, number_of_legs, contact_model, c_init_z):
 
         self.number_of_legs = number_of_legs
         self.contact_model = contact_model
 
-        self.nodes = nodes
         self.step_counter = 0
 
         self.step_duration = 0.5

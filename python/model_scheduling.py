@@ -37,9 +37,9 @@ horizon_ros_utils.roslaunch("srbd_horizon", "model_scheduling.launch")
 time.sleep(3.)
 
 dt = 0.05
-full_model_ns = 4
-srbd_ns = 8
-lip_ns = 8
+full_model_ns = 10
+srbd_ns = 5
+lip_ns = 5
 
 
 full_params = model_params(ns=full_model_ns, T=full_model_ns * dt)
@@ -68,7 +68,7 @@ lip.createLIPProblem(lip_params.ns, lip_params.T)
 sqp_opts = dict()
 sqp_opts["gnsqp.max_iter"] = 1
 sqp_opts['gnsqp.osqp.scaled_termination'] = False
-sqp_opts['gnsqp.eps_regularization'] = 1e-6
+sqp_opts['gnsqp.eps_regularization'] = 1e-5
 sqp_opts['gnsqp.osqp.polish'] = False
 sqp_opts['gnsqp.osqp.verbose'] = False
 sqp_opts['gnsqp.osqp.linsys_solver_mkl_pardiso'] = True
@@ -211,19 +211,7 @@ joint_state_msg = JointState()
 joint_state_msg.name = full_model.kindyn.joint_names()[2:]
 
 import wpg
-lip_wpg = wpg.steps_phase(nodes=lip_params.ns, number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
-srbd_wpg = wpg.steps_phase(nodes=srbd_params.ns, number_of_legs=2, contact_model=srbd.contact_model, c_init_z=srbd.initial_foot_position[0][2].__float__())
-
-
-k = 0
-initial_foot_position = dict()
-#cdot_switch = dict()
-for foot_frame in full_model.foot_frames:
-    initial_foot_position[k] = full_model.initial_foot_position[foot_frame]
-    #cdot_switch[k] = full_model.cdot_switch[foot_frame]
-    k += 1
-
-full_model_wpg = wpg.steps_phase(nodes=full_params.ns, number_of_legs=2, contact_model=full_model.contact_model, c_init_z=initial_foot_position[0][2].__float__())
+lip_wpg = wpg.steps_phase(number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
 
 solution_time_vec = []
 while not rospy.is_shutdown():
@@ -251,16 +239,42 @@ while not rospy.is_shutdown():
         full_model.oref.assign(full_model.oref.getValues(nodes=j), nodes=j - 1)
         full_model.rdot_ref.assign(full_model.rdot_ref.getValues(nodes=j), nodes=j - 1)
         full_model.w_ref.assign(full_model.w_ref.getValues(nodes=j), nodes=j - 1)
+
     full_model.shiftContactConstraints(end_node=full_model.ns)
+
+
+    cref = np.zeros((full_model.nc, 1))
+    cref[0] = cref[1] = srbd.c_ref[0].getValues(nodes=0)
+    cref[2] = cref[3] = srbd.c_ref[1].getValues(nodes=0)
+    cref[4] = cref[5] = srbd.c_ref[2].getValues(nodes=0)
+    cref[6] = cref[7] = srbd.c_ref[3].getValues(nodes=0)
+
+    vlim = np.zeros((2, full_model.nc))
+    vlim[:, 0] = vlim[:, 1] = (1. - srbd.cdot_switch[0].getValues(nodes=0)) * 1e4 * np.ones(2)
+    vlim[:, 2] = vlim[:, 3] = (1. - srbd.cdot_switch[1].getValues(nodes=0)) * 1e4 * np.ones(2)
+    vlim[:, 4] = vlim[:, 5] = (1. - srbd.cdot_switch[2].getValues(nodes=0)) * 1e4 * np.ones(2)
+    vlim[:, 6] = vlim[:, 7] = (1. - srbd.cdot_switch[3].getValues(nodes=0)) * 1e4 * np.ones(2)
+
+    flim = np.zeros((3, full_model.nc))
+    flim[:, 0] = flim[:, 1] = srbd.cdot_switch[0].getValues(nodes=0) * 1e4 * np.ones(3)
+    flim[:, 2] = flim[:, 3] = srbd.cdot_switch[1].getValues(nodes=0) * 1e4 * np.ones(3)
+    flim[:, 4] = flim[:, 5] = srbd.cdot_switch[2].getValues(nodes=0) * 1e4 * np.ones(3)
+    flim[:, 6] = flim[:, 7] = srbd.cdot_switch[3].getValues(nodes=0) * 1e4 * np.ones(3)
+
+    for i in range(0, full_model.nc):
+        full_model._cdotxy_tracking_constraint[i].setBounds(-vlim[:, i], vlim[:, i], nodes=full_params.ns-1)
+        full_model._c_ref[i].assign(cref[i], nodes=full_params.ns-1)
+        full_model._f[i].setBounds(-flim[:, i], flim[:, i], nodes=full_params.ns-1)
+
+
 
     for j in range(1, srbd_params.ns):
         srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
         srbd.w_ref.assign(srbd.w_ref.getValues(nodes=j), nodes=j - 1)
         srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
 
-    #todo: missing connection between full and srbd!
-
     srbd.shiftContactConstraints(end_node=srbd_params.ns)
+
     srbd.rdot_ref.assign(lip.rdot_ref.getValues(nodes=0), nodes=srbd_params.ns - 1)
     for i in range(0, srbd.nc):
         srbd.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
@@ -299,8 +313,6 @@ while not rospy.is_shutdown():
         # w_ref.assign([0, 0, 0], nodes=ns_srbd)
         # orientation_tracking_gain.assign(0.)
 
-    #full_model.setAction(motion, full_model_wpg)
-    #srbd.setAction(motion, srbd_wpg)
     lip.setAction(motion, lip_wpg)
 
 

@@ -107,8 +107,7 @@ meta_solver.add(solver_lip, foo_mapping_function)
 meta_solver.setMaxIterations(1)
 
 import wpg
-lip_wpg = wpg.steps_phase(nodes=ns_lip, number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
-srbd_wpg = wpg.steps_phase(nodes=ns_srbd, number_of_legs=2, contact_model=srbd.contact_model, c_init_z=srbd.initial_foot_position[0][2].__float__())
+lip_wpg = wpg.steps_phase(number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
 
 solution_time_vec = []
 while not rospy.is_shutdown():

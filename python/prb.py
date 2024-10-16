@@ -359,8 +359,7 @@ class FullBodyProblem:
 
         for j in range(1, end_node):
             for i in range(0, self.contact_model * self.number_of_legs):
-                if self._cdotxy_tracking_constraint is not None:
-                    self._cdotxy_tracking_constraint[i].setBounds(
+                self._cdotxy_tracking_constraint[i].setBounds(
                         self._cdotxy_tracking_constraint[i].getLowerBounds(node=j),
                         self._cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j - 1)
                 self._c_ref[i].assign(self._c_ref[i].getValues(nodes=j), nodes=j - 1)

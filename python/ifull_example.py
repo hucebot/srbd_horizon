@@ -94,7 +94,7 @@ for foot_frame in full_model.foot_frames:
     #cdot_switch[k] = full_model.cdot_switch[foot_frame]
     k += 1
 
-wpg = wpg.steps_phase(nodes=ns, number_of_legs=2, contact_model=full_model.contact_model, c_init_z=initial_foot_position[0][2].__float__())
+wpg = wpg.steps_phase(number_of_legs=2, contact_model=full_model.contact_model, c_init_z=initial_foot_position[0][2].__float__())
 
 while not rospy.is_shutdown():
     """

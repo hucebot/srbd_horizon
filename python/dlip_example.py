@@ -81,7 +81,7 @@ dae["quad"] = 0.
 simulation_euler_integrator = solver.get_f(0)
 
 # Walking patter generator and scheduler
-wpg = wpg.steps_phase(nodes=ns, number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
+wpg = wpg.steps_phase(number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
 
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 solution_time_vec = list()
