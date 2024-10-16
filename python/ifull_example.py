@@ -86,29 +86,15 @@ joint_state_msg = JointState()
 joint_state_msg.name = full_model.kindyn.joint_names()[2:]
 
 
-# create data structures for wpg: copying data to different keys indexed by id
 k = 0
-f = dict()
-c = dict()
-cdot = dict()
 initial_foot_position = dict()
-c_ref = dict()
 #cdot_switch = dict()
-cdotxy_tracking_constraint = dict()
 for foot_frame in full_model.foot_frames:
-    f[k] = full_model.f[foot_frame]
-    c[k] = full_model.c[foot_frame]
-    cdot[k] = full_model.cdot[foot_frame]
     initial_foot_position[k] = full_model.initial_foot_position[foot_frame]
-    c_ref[k] = full_model.c_ref[foot_frame]
     #cdot_switch[k] = full_model.cdot_switch[foot_frame]
-    cdotxy_tracking_constraint[k] = full_model.cdotxy_tracking_constraint[foot_frame]
     k += 1
 
-
-wpg = wpg.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, full_model.w_ref,
-                      full_model.orientation_tracking_gain, cdot_switch=None, nodes=ns, number_of_legs=2,
-                      contact_model=full_model.contact_model, cdotxy_tracking_constraint=cdotxy_tracking_constraint)
+wpg = wpg.steps_phase(nodes=ns, number_of_legs=2, contact_model=full_model.contact_model, c_init_z=initial_foot_position[0][2].__float__())
 
 while not rospy.is_shutdown():
     """
@@ -162,12 +148,8 @@ while not rospy.is_shutdown():
         # w_ref.assign([0, 0, 0], nodes=ns)
         # orientation_tracking_gain.assign(0.)
 
-    if motion == "walking":
-        wpg.set("step")
-    elif motion == "jumping":
-        wpg.set("jump")
-    else:
-        wpg.set("standing")
+    full_model.shiftContactConstraints()
+    full_model.setAction(motion, wpg)
 
     # solve
     tic()

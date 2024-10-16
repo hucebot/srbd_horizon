@@ -271,6 +271,27 @@ class FullBodyProblem:
         #self.cdot_switch = cdot_switch
         self.cdotxy_tracking_constraint = cdotxy_tracking_constraint
 
+        self.nodes = ns
+        self.number_of_legs = number_of_legs
+        self.step_counter = 0
+
+        self.createsInternalDataStructures()
+
+    def createsInternalDataStructures(self):
+        k = 0
+        self._f = dict()
+        self._c = dict()
+        self._cdot = dict()
+        self._c_ref = dict()
+        self._cdotxy_tracking_constraint = dict()
+        for foot_frame in self.foot_frames:
+            self._f[k] = self.f[foot_frame]
+            self._c[k] = self.c[foot_frame]
+            self._cdot[k] = self.cdot[foot_frame]
+            self._c_ref[k] = self.c_ref[foot_frame]
+            self._cdotxy_tracking_constraint[k] = self.cdotxy_tracking_constraint[foot_frame]
+            k += 1
+
     def getStateInputMappingMatrices(self):
         n = self.nq + self.nv
 
@@ -331,6 +352,63 @@ class FullBodyProblem:
 
         #print(v.print_vector(False))
         return v
+
+    def shiftContactConstraints(self, end_node=None):
+        if end_node is None:
+            end_node = self.nodes + 1
+
+        for j in range(1, end_node):
+            for i in range(0, self.contact_model * self.number_of_legs):
+                if self._cdotxy_tracking_constraint is not None:
+                    self._cdotxy_tracking_constraint[i].setBounds(
+                        self._cdotxy_tracking_constraint[i].getLowerBounds(node=j),
+                        self._cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j - 1)
+                self._c_ref[i].assign(self._c_ref[i].getValues(nodes=j), nodes=j - 1)
+                if j < self.nodes:
+                    l, u = self._f[i].getBounds(node=j)
+                    self._f[i].setBounds(l, u, nodes=j - 1)
+
+
+    def setAction(self, action, plan):
+        ref_id = self.step_counter % (2 * plan.step_nodes)
+
+        if action == "walking":
+            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
+            for i in range(0, self.contact_model):
+                self._c_ref[i].assign(plan.l_cycle[ref_id], nodes=self.nodes)
+                self._f[i].setBounds(plan.l_cdot_switch[ref_id] * -1e4 * np.ones(3),
+                                     plan.l_cdot_switch[ref_id] * 1e4 * np.ones(3), nodes=self.nodes-1)
+                self._cdotxy_tracking_constraint[i].setBounds((1. - plan.l_cdot_switch[ref_id]) * -1e4 * np.ones(2),
+                                                             (1. - plan.l_cdot_switch[ref_id]) * 1e4 * np.ones(2), nodes=self.nodes)
+            for i in range(self.contact_model, self.contact_model * self.number_of_legs):
+                self._c_ref[i].assign(plan.r_cycle[ref_id], nodes=self.nodes)
+                self._f[i].setBounds(plan.r_cdot_switch[ref_id] * -1e4 * np.ones(3),
+                                     plan.r_cdot_switch[ref_id] * 1e4 * np.ones(3), nodes=self.nodes-1)
+                self._cdotxy_tracking_constraint[i].setBounds((1. - plan.r_cdot_switch[ref_id]) * -1e4 * np.ones(2),
+                                                             (1. - plan.r_cdot_switch[ref_id]) * 1e4 * np.ones(2), nodes=self.nodes)
+
+        elif action == "jumping":
+            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            self.orientation_tracking_gain.assign(0., nodes=self.nodes)
+            for i in range(0, len(self.c)):
+                self._f[i].setBounds(plan.jump_cdot_switch[ref_id] * np.ones(3),
+                                    plan.jump_cdot_switch[ref_id] * np.ones(3), nodes=self.nodes - 1)
+                self._cdotxy_tracking_constraint[i].setBounds((1. - plan.jump_cdot_switch[ref_id]) * -1e4 * np.ones(2),
+                                                             (1. - plan.jump_cdot_switch[ref_id]) * 1e4 * np.ones(2), nodes=self.nodes)
+                self._c_ref[i].assign(plan.jump_c[ref_id], nodes=self.nodes)
+
+        else: # stance
+            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
+            for i in range(0, len(self.c)):
+                self._c_ref[i].assign(0., nodes=self.nodes)
+                self._f[i].setBounds(-1e4 * np.ones(3), 1e4 * np.ones(3), nodes=self.nodes - 1)
+                self._cdotxy_tracking_constraint[i].setBounds(0. * np.ones(2), 0. * np.ones(2), nodes=self.nodes)
+
+        self.step_counter += 1
+
+
 
 class SRBDProblem:
     def __init__(self, namespace=""):
@@ -541,6 +619,10 @@ class SRBDProblem:
         self.nc = nc
         self.I = I
 
+        self.number_of_legs = number_of_legs
+        self.nodes = ns
+        self.step_counter = 0
+
     def getInitialState(self):
         return np.array([float(self.com[0]), float(self.com[1]), float(self.com[2]),
                                   0., 0., 0., 1.,
@@ -564,6 +646,61 @@ class SRBDProblem:
                          0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4,
                          0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4,
                          0., 0., 0., 0., 0., self.m * 9.81 / self.force_scaling / 4])
+
+
+    def shiftContactConstraints(self, end_node=None):
+        if end_node is None:
+            end_node = self.nodes + 1
+
+        for j in range(1, end_node):
+            for i in range(0, self.contact_model * self.number_of_legs):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
+                self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j - 1)
+
+    def setAction(self, action, plan):
+        ref_id = self.step_counter % (2 * plan.step_nodes)
+
+        if action == "walking":
+            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
+            for i in range(0, self.contact_model):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(plan.l_cdot_switch[ref_id], nodes=self.nodes)
+                self.c_ref[i].assign(plan.l_cycle[ref_id], nodes=self.nodes)
+
+            for i in range(self.contact_model, self.contact_model * self.number_of_legs):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(plan.r_cdot_switch[ref_id], nodes=self.nodes)
+                self.c_ref[i].assign(plan.r_cycle[ref_id], nodes=self.nodes)
+
+        elif action == "jumping":
+            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            self.orientation_tracking_gain.assign(0., nodes=self.nodes)
+            for i in range(0, len(self.c)):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(plan.jump_cdot_switch[ref_id], nodes=self.nodes)
+                self.c_ref[i].assign(plan.jump_c[ref_id], nodes=self.nodes)
+
+        else: # stance
+            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
+            for i in range(0, len(self.c)):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(1., nodes=self.nodes)
+                self.c_ref[i].assign(0., nodes=self.nodes)
+
+        self.step_counter += 1
+
+    def shiftContactConstraints(self, end_node=None):
+        if end_node is None:
+            end_node = self.nodes + 1
+
+        for j in range(1, end_node):
+            for i in range(0, self.contact_model * self.number_of_legs):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
+                self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j - 1)
 
 class LIPProblem:
     def __init__(self, namespace=""):
@@ -738,6 +875,10 @@ class LIPProblem:
         self.eta2_p = eta2_p
         self.RDDOT = cs.Function('rddot', [prb.getState().getVars(), prb.getInput().getVars(),
                                            cs.vcat(list(prb.getParameters().values()))], [rddot])
+        self.nodes = ns
+        self.number_of_legs = number_of_legs
+
+        self.step_counter = 0
 
     def getInitialState(self):
         return np.array([float(self.com[0]), float(self.com[1]), float(self.com[2]),
@@ -761,3 +902,42 @@ class LIPProblem:
                          0., 0., 0.,
                          0., 0., 0.,
                          0., 0., 0.])
+
+    def shiftContactConstraints(self, end_node=None):
+        if end_node is None:
+            end_node = self.nodes + 1
+
+        for j in range(1, end_node):
+            for i in range(0, self.contact_model * self.number_of_legs):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
+                self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j - 1)
+
+    def setAction(self, action, plan):
+        ref_id = self.step_counter % (2 * plan.step_nodes)
+
+        if action == "walking":
+
+            for i in range(0, self.contact_model):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(plan.l_cdot_switch[ref_id], nodes=self.nodes)
+                self.c_ref[i].assign(plan.l_cycle[ref_id], nodes=self.nodes)
+
+            for i in range(self.contact_model, self.contact_model * self.number_of_legs):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(plan.r_cdot_switch[ref_id], nodes=self.nodes)
+                self.c_ref[i].assign(plan.r_cycle[ref_id], nodes=self.nodes)
+
+        elif action == "jumping":
+            for i in range(0, len(self.c)):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(plan.jump_cdot_switch[ref_id], nodes=self.nodes)
+                self.c_ref[i].assign(plan.jump_c[ref_id], nodes=self.nodes)
+
+        else: # stance
+            for i in range(0, len(self.c)):
+                if self.cdot_switch is not None:
+                    self.cdot_switch[i].assign(1., nodes=self.nodes)
+                self.c_ref[i].assign(0., nodes=self.nodes)
+
+        self.step_counter += 1

@@ -37,9 +37,9 @@ horizon_ros_utils.roslaunch("srbd_horizon", "model_scheduling.launch")
 time.sleep(3.)
 
 dt = 0.05
-full_model_ns = 20 #6
-srbd_ns = 7
-lip_ns = 7
+full_model_ns = 4
+srbd_ns = 8
+lip_ns = 8
 
 
 full_params = model_params(ns=full_model_ns, T=full_model_ns * dt)
@@ -68,7 +68,7 @@ lip.createLIPProblem(lip_params.ns, lip_params.T)
 sqp_opts = dict()
 sqp_opts["gnsqp.max_iter"] = 1
 sqp_opts['gnsqp.osqp.scaled_termination'] = False
-sqp_opts['gnsqp.eps_regularization'] = 1e-2
+sqp_opts['gnsqp.eps_regularization'] = 1e-6
 sqp_opts['gnsqp.osqp.polish'] = False
 sqp_opts['gnsqp.osqp.verbose'] = False
 sqp_opts['gnsqp.osqp.linsys_solver_mkl_pardiso'] = True
@@ -153,6 +153,7 @@ print(f"full left_foot_lower initial state: {c_right_foot_lower}")
 
 
 meta_solver = ddp.MetaSolver(full_model.prb, None)
+meta_solver.setMaxIterations(1)
 
 com = full_model.kindyn.centerOfMass()(q=full_model.q)['com']
 vcom = full_model.kindyn.centerOfMass()(q=full_model.q, v=full_model.qdot)['vcom']
@@ -187,10 +188,10 @@ srbd_to_lip_function = cs.Function("srbd_to_lip", [srbd.prb.getState().getVars()
                                              srbd.prb.getState().getVars()[7:19], # contacts
                                              srbd.prb.getState().getVars()[19:22], # vcom
                                              srbd.prb.getState().getVars()[25:37]])]) # vcontacts
-#meta_solver.add(solver_srbd, srbd_to_lip_function)
+meta_solver.add(solver_srbd, srbd_to_lip_function)
 
 foo_mapping_function = cs.Function("foo", [lip.prb.getState().getVars()], [cs.DM.zeros(1, 1)])
-#meta_solver.add(solver_lip, foo_mapping_function)
+meta_solver.add(solver_lip, foo_mapping_function)
 
 #meta_solver.setInitialState(full_model.getInitialState()) # this is not used when first solver is SQP, x0 is set through constraints!
 
@@ -201,39 +202,28 @@ solver_sqp.updateConstraints()
 meta_solver.solve()
 
 solution = meta_solver.getSolutionModel(0)
-#srbd_solution = meta_solver.getSolutionModel(1)
-#lip_solution = meta_solver.getSolutionModel(2)
+srbd_solution = meta_solver.getSolutionModel(1)
+lip_solution = meta_solver.getSolutionModel(2)
 
 solution['q'] = utilities.normalize_quaternion_part_horizon(solution['q'], full_model.ns)
 
 joint_state_msg = JointState()
 joint_state_msg.name = full_model.kindyn.joint_names()[2:]
 
-import wpg as walking_pattern_generator
-wpg = walking_pattern_generator.steps_phase(srbd.f, lip.c, lip.cdot, lip.initial_foot_position[0][2].__float__(), lip.c_ref, srbd.w_ref, srbd.orientation_tracking_gain, lip.cdot_switch, lip_params.ns, number_of_legs=2,
-                      contact_model=lip.contact_model, cdotxy_tracking_constraint=None)
+import wpg
+lip_wpg = wpg.steps_phase(nodes=lip_params.ns, number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
+srbd_wpg = wpg.steps_phase(nodes=srbd_params.ns, number_of_legs=2, contact_model=srbd.contact_model, c_init_z=srbd.initial_foot_position[0][2].__float__())
 
-# create data structures for wpg: copying data to different keys indexed by id
+
 k = 0
-f = dict()
-c = dict()
-cdot = dict()
 initial_foot_position = dict()
-c_ref = dict()
 #cdot_switch = dict()
-cdotxy_tracking_constraint = dict()
 for foot_frame in full_model.foot_frames:
-    f[k] = full_model.f[foot_frame]
-    c[k] = full_model.c[foot_frame]
-    cdot[k] = full_model.cdot[foot_frame]
     initial_foot_position[k] = full_model.initial_foot_position[foot_frame]
-    c_ref[k] = full_model.c_ref[foot_frame]
     #cdot_switch[k] = full_model.cdot_switch[foot_frame]
-    cdotxy_tracking_constraint[k] = full_model.cdotxy_tracking_constraint[foot_frame]
     k += 1
-full_wpg = walking_pattern_generator.steps_phase(f, c, cdot, initial_foot_position[0][2].__float__(), c_ref, full_model.w_ref,
-                      full_model.orientation_tracking_gain, cdot_switch=None, nodes=full_params.ns, number_of_legs=2,
-                      contact_model=full_model.contact_model, cdotxy_tracking_constraint=cdotxy_tracking_constraint)
+
+full_model_wpg = wpg.steps_phase(nodes=full_params.ns, number_of_legs=2, contact_model=full_model.contact_model, c_init_z=initial_foot_position[0][2].__float__())
 
 solution_time_vec = []
 while not rospy.is_shutdown():
@@ -257,46 +247,38 @@ while not rospy.is_shutdown():
             motion = "jumping"
 
     # shift reference velocities back by one node
-    # for j in range(1, full_model.ns):
-    #     full_model.oref.assign(full_model.oref.getValues(nodes=j), nodes=j - 1)
-    #     full_model.rdot_ref.assign(full_model.rdot_ref.getValues(nodes=j), nodes=j - 1)
-    #     full_model.w_ref.assign(full_model.w_ref.getValues(nodes=j), nodes=j - 1)
-    #     for i in range(0, full_model.nc):
-    #         c_ref[i].assign(c_ref[i].getValues(nodes=j), nodes=j - 1)
-    #         cdotxy_tracking_constraint[i].setBounds(cdotxy_tracking_constraint[i].getLowerBounds(node=j),
-    #                                                 cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j - 1)
-    #         if j < full_model.ns:
-    #             l, u = f[i].getBounds(node=j)
-    #             f[i].setBounds(l, u, nodes=j - 1)
-    #
-    #
-    # for j in range(1, srbd_params.ns):
-    #     srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
-    #     srbd.w_ref.assign(srbd.w_ref.getValues(nodes=j), nodes=j - 1)
-    #     srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
-    #     for i in range(0, srbd.nc):
-    #         srbd.cdot_switch[i].assign(srbd.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
-    #         srbd.c_ref[i].assign(srbd.c_ref[i].getValues(nodes=j), nodes=j - 1)
-    #
-    # srbd.rdot_ref.assign(lip.rdot_ref.getValues(nodes=0), nodes=srbd_params.ns - 1)
-    # for i in range(0, srbd.nc):
-    #     srbd.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
-    #     srbd.c_ref[i].assign(lip.c_ref[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
-    # # w_ref??
-    # # oref??
-    #
-    # for j in range(1, lip_params.ns + 1):
-    #     lip.rdot_ref.assign(lip.rdot_ref.getValues(nodes=j), nodes=j - 1)
-    #     lip.eta2_p.assign(lip.eta2_p.getValues(nodes=j), nodes=j - 1)
-    #     for i in range(0, lip.nc):
-    #         lip.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
-    #         lip.c_ref[i].assign(lip.c_ref[i].getValues(nodes=j), nodes=j - 1)
-    #
-    # if lip.cdot_switch[0].getValues(lip_params.ns) == 0 and lip.cdot_switch[1].getValues(lip_params.ns) == 0 and lip.cdot_switch[
-    #     2].getValues(lip_params.ns) == 0 and lip.cdot_switch[3].getValues(lip_params.ns) == 0:
-    #     lip.eta2_p.assign(0., nodes=lip_params.ns)
-    # else:
-    #     lip.eta2_p.assign(lip.eta2, nodes=lip_params.ns)
+    for j in range(1, full_model.ns):
+        full_model.oref.assign(full_model.oref.getValues(nodes=j), nodes=j - 1)
+        full_model.rdot_ref.assign(full_model.rdot_ref.getValues(nodes=j), nodes=j - 1)
+        full_model.w_ref.assign(full_model.w_ref.getValues(nodes=j), nodes=j - 1)
+    full_model.shiftContactConstraints(end_node=full_model.ns)
+
+    for j in range(1, srbd_params.ns):
+        srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
+        srbd.w_ref.assign(srbd.w_ref.getValues(nodes=j), nodes=j - 1)
+        srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
+
+    #todo: missing connection between full and srbd!
+
+    srbd.shiftContactConstraints(end_node=srbd_params.ns)
+    srbd.rdot_ref.assign(lip.rdot_ref.getValues(nodes=0), nodes=srbd_params.ns - 1)
+    for i in range(0, srbd.nc):
+        srbd.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
+        srbd.c_ref[i].assign(lip.c_ref[i].getValues(nodes=0), nodes=srbd_params.ns - 1)
+    # w_ref??
+    # oref??
+
+    for j in range(1, lip_params.ns + 1):
+        lip.rdot_ref.assign(lip.rdot_ref.getValues(nodes=j), nodes=j - 1)
+        lip.eta2_p.assign(lip.eta2_p.getValues(nodes=j), nodes=j - 1)
+
+    lip.shiftContactConstraints()
+
+    if lip.cdot_switch[0].getValues(lip_params.ns) == 0 and lip.cdot_switch[1].getValues(lip_params.ns) == 0 and lip.cdot_switch[
+        2].getValues(lip_params.ns) == 0 and lip.cdot_switch[3].getValues(lip_params.ns) == 0:
+        lip.eta2_p.assign(0., nodes=lip_params.ns)
+    else:
+        lip.eta2_p.assign(lip.eta2, nodes=lip_params.ns)
 
     # assign new references based on user input
     if motion == "standing":
@@ -317,15 +299,9 @@ while not rospy.is_shutdown():
         # w_ref.assign([0, 0, 0], nodes=ns_srbd)
         # orientation_tracking_gain.assign(0.)
 
-    if motion == "walking":
-        wpg.set("step", shift_contacts_plan=False)
-        full_wpg.set("step", shift_contacts_plan=True)
-    elif motion == "jumping":
-        wpg.set("jump", shift_contacts_plan=False)
-        full_wpg.set("jump", shift_contacts_plan=True)
-    else:
-        wpg.set("standing", shift_contacts_plan=False)
-        full_wpg.set("standing", shift_contacts_plan=True)
+    #full_model.setAction(motion, full_model_wpg)
+    #srbd.setAction(motion, srbd_wpg)
+    lip.setAction(motion, lip_wpg)
 
 
     #open loop
@@ -343,32 +319,32 @@ while not rospy.is_shutdown():
     solution_time_vec.append(solution_time)
 
     solution = meta_solver.getSolutionDict()
-    #srbd_solution = meta_solver.getSolutionModel(1)
-    #lip_solution = meta_solver.getSolutionModel(2)
+    srbd_solution = meta_solver.getSolutionModel(1)
+    lip_solution = meta_solver.getSolutionModel(2)
 
     solution['q'] = utilities.normalize_quaternion_part_horizon(solution['q'], full_model.ns)
 
 
     t = rospy.Time.now()
 
-    # lip_input = lip_solution["u_opt"][:, 0]
-    # lip_state = lip_solution["x_opt"][:, 0]
-    # utilities.ZMPTfBroadcaster(lip_solution['z'][:, 0], t)
-    # rddot0 = lip.RDDOT(lip_state, lip_input, solver_lip.get_params_value(0))
-    # fzmp = lip.m * (np.array([0., 0., 9.81]) + rddot0)
-    # viz.publishContactForce(t, fzmp, 'ZMP')
-    # viz.publishPointTrj(lip_solution["r"], t, name="COM", frame="world", color=[1., 1., 0.], namespace="LIP")
-    # viz.publishPointTrj(lip_solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
-    #
-    # c0_hist = dict()
-    # for i in range(0, srbd.nc):
-    #     c0_hist['c' + str(i)] = srbd_solution['c' + str(i)][:, 0]
-    # utilities.SRBDTfBroadcaster(srbd_solution['r'][:, 0], srbd_solution['o'][:, 0], c0_hist, t)
-    # for i in range(0, srbd.nc):
-    #     viz.publishContactForce(t, srbd.force_scaling * srbd_solution['f' + str(i)][:, 0], 'c' + str(i))
-    #     viz.publishPointTrj(srbd_solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-    # viz.SRBDViewer(srbd.I, "SRB", t, srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
-    # viz.publishPointTrj(srbd_solution["r"], t, "SRB", "world")
+    lip_input = lip_solution["u_opt"][:, 0]
+    lip_state = lip_solution["x_opt"][:, 0]
+    utilities.ZMPTfBroadcaster(lip_solution['z'][:, 0], t)
+    rddot0 = lip.RDDOT(lip_state, lip_input, solver_lip.get_params_value(0))
+    fzmp = lip.m * (np.array([0., 0., 9.81]) + rddot0)
+    viz.publishContactForce(t, fzmp, 'ZMP')
+    viz.publishPointTrj(lip_solution["r"], t, name="COM", frame="world", color=[1., 1., 0.], namespace="LIP")
+    viz.publishPointTrj(lip_solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
+
+    c0_hist = dict()
+    for i in range(0, srbd.nc):
+        c0_hist['c' + str(i)] = srbd_solution['c' + str(i)][:, 0]
+    utilities.SRBDTfBroadcaster(srbd_solution['r'][:, 0], srbd_solution['o'][:, 0], c0_hist, t)
+    for i in range(0, srbd.nc):
+        viz.publishContactForce(t, srbd.force_scaling * srbd_solution['f' + str(i)][:, 0], 'c' + str(i))
+        viz.publishPointTrj(srbd_solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
+    viz.SRBDViewer(srbd.I, "SRB", t, srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
+    viz.publishPointTrj(srbd_solution["r"], t, "SRB", "world")
 
     # publish tf
     br = tf.TransformBroadcaster()
@@ -390,6 +366,13 @@ while not rospy.is_shutdown():
         viz.publishContactForce(t, solution['f_' + full_model.foot_frames[i]][:, 0], frame=full_model.foot_frames[i],
                                 topic='fm_fc' + str(i))
         viz.publishPointTrj(c[full_model.foot_frames[i]], t, 'fm_c' + str(i), "world", color=[0., 0., 1.])
+
+    # publish center of mass
+    # COM = full_model.kindyn.centerOfMass()
+    # com = np.zeros((3, ns + 1))
+    # for i in range(0, ns + 1):
+    #     com[:, i] = COM(q=solution['q'][:, i])['com'].toarray().flatten()
+    # viz.publishPointTrj(com, t, name="SRB", frame="world", color=[1., 0., 0.])
 
     rate.sleep()
 

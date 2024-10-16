@@ -77,8 +77,8 @@ dae["quad"] = 0.
 simulation_euler_integrator = solver.get_f(0)
 
 # Walking patter generator and scheduler
-wpg = wpg.steps_phase(srbd.f, srbd.c, srbd.cdot, srbd.initial_foot_position[0][2].__float__(), srbd.c_ref, srbd.w_ref, srbd.orientation_tracking_gain, srbd.cdot_switch, ns, number_of_legs=2,
-                      contact_model=srbd.contact_model, cdotxy_tracking_constraint=None)
+wpg = wpg.steps_phase(nodes=ns, number_of_legs=2, contact_model=srbd.contact_model, c_init_z=srbd.initial_foot_position[0][2].__float__())
+
 ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
 solution_time_vec = []
 while not rospy.is_shutdown():
@@ -125,12 +125,8 @@ while not rospy.is_shutdown():
         #w_ref.assign([0, 0, 0], nodes=ns)
         #orientation_tracking_gain.assign(0.)
 
-    if motion == "walking":
-        wpg.set("step")
-    elif motion == "jumping":
-        wpg.set("jump")
-    else:
-        wpg.set("standing")
+    srbd.shiftContactConstraints()
+    srbd.setAction(motion, wpg)
 
     # solve
     tic()

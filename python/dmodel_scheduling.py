@@ -104,10 +104,11 @@ model_mapping_function = cs.Function("srbd_to_lip", [srbd.prb.getState().getVars
 meta_solver.add(solver_srbd, model_mapping_function)
 foo_mapping_function = cs.Function("foo", [lip.prb.getState().getVars()], [cs.DM.zeros(1, 1)])
 meta_solver.add(solver_lip, foo_mapping_function)
+meta_solver.setMaxIterations(1)
 
 import wpg
-wpg = wpg.steps_phase(srbd.f, lip.c, lip.cdot, lip.initial_foot_position[0][2].__float__(), lip.c_ref, srbd.w_ref, srbd.orientation_tracking_gain, lip.cdot_switch, ns_lip, number_of_legs=2,
-                      contact_model=lip.contact_model, cdotxy_tracking_constraint=None)
+lip_wpg = wpg.steps_phase(nodes=ns_lip, number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
+srbd_wpg = wpg.steps_phase(nodes=ns_srbd, number_of_legs=2, contact_model=srbd.contact_model, c_init_z=srbd.initial_foot_position[0][2].__float__())
 
 solution_time_vec = []
 while not rospy.is_shutdown():
@@ -134,9 +135,8 @@ while not rospy.is_shutdown():
         srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
         srbd.w_ref.assign(srbd.w_ref.getValues(nodes=j), nodes=j - 1)
         srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
-        for i in range(0, srbd.nc):
-            srbd.cdot_switch[i].assign(srbd.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
-            srbd.c_ref[i].assign(srbd.c_ref[i].getValues(nodes=j), nodes=j - 1)
+
+    srbd.shiftContactConstraints(end_node=ns_srbd)
 
     srbd.rdot_ref.assign(lip.rdot_ref.getValues(nodes=0), nodes=ns_srbd-1)
     for i in range(0, srbd.nc):
@@ -148,18 +148,13 @@ while not rospy.is_shutdown():
     for j in range(1, ns_lip + 1):
         lip.rdot_ref.assign(lip.rdot_ref.getValues(nodes=j), nodes=j-1)
         lip.eta2_p.assign(lip.eta2_p.getValues(nodes=j), nodes=j-1)
-        for i in range(0, lip.nc):
-            lip.cdot_switch[i].assign(lip.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
-            lip.c_ref[i].assign(lip.c_ref[i].getValues(nodes=j), nodes=j - 1)
 
-
-
+    lip.shiftContactConstraints()
 
     if lip.cdot_switch[0].getValues(ns_lip) == 0 and lip.cdot_switch[1].getValues(ns_lip) == 0 and lip.cdot_switch[2].getValues(ns_lip) == 0 and lip.cdot_switch[3].getValues(ns_lip) == 0:
         lip.eta2_p.assign(0., nodes=ns_lip)
     else:
         lip.eta2_p.assign(lip.eta2, nodes=ns_lip)
-
 
 
     # assign new references based on user input
@@ -181,12 +176,8 @@ while not rospy.is_shutdown():
         #w_ref.assign([0, 0, 0], nodes=ns_srbd)
         #orientation_tracking_gain.assign(0.)
 
-    if motion == "walking":
-        wpg.set("step", shift_contacts_plan=False)
-    elif motion == "jumping":
-        wpg.set("jump", shift_contacts_plan=False)
-    else:
-        wpg.set("standing", shift_contacts_plan=False)
+
+    lip.setAction(motion, lip_wpg)
 
     # solve
     tic()

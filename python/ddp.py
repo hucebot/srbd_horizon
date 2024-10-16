@@ -72,6 +72,9 @@ class MetaSolver(Solver):
         var_solution['u_opt'] = self.U[i]
         return var_solution
 
+    def setMaxIterations(self, max_iters):
+        self.meta_solver.set_max_iters(max_iters)
+
 
 
 def parameterized_euler(ode, state, dt):
