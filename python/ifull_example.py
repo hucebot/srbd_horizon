@@ -45,15 +45,30 @@ global joy_msg
 joy_msg = None
 
 import ddp
-
-opts = {"gnsqp.max_iter": max_iteration,
+solver = 'fatrop'
+opts = dict()
+if solver == 'osqp':
+    opts = {"gnsqp.max_iter": max_iteration,
          'gnsqp.osqp.scaled_termination': False,
          'gnsqp.eps_regularization': 1e-2, #1e-2,
         'gnsqp.osqp.polish': False,
         'gnsqp.osqp.linsys_solver_mkl_pardiso': True,
          'gnsqp.osqp.verbose': False}
+elif solver == 'fatrop':
+    nx = [full_model.nx] * (ns + 1)
+    nu = [full_model.nu] * ns
+    ng = [full_model.ngx + full_model.ngux] * ns
+    ng.append(full_model.ngx)
+    opts = {"gnsqp.structure_detection": "manual",
+            "gnsqp.N": ns,
+            "gnsqp.nx": nx,
+            "gnsqp.nu": nu,
+            "gnsqp.ng": ng,
+            'gnsqp.eps_regularization': 1e-2,
+            "gnsqp.max_iter": max_iteration}
 
-solver = ddp.SQPSolver(full_model.prb, qp_solver_plugin='osqp', opts=opts)
+
+solver = ddp.SQPSolver(full_model.prb, qp_solver_plugin=solver, opts=opts)
 full_model.q.setInitialGuess(full_model.getInitialState()[0:full_model.nq])
 full_model.qdot.setInitialGuess(full_model.getInitialState()[full_model.nq:])
 full_model.qddot.setInitialGuess(full_model.getStaticInput()[0:full_model.nv])

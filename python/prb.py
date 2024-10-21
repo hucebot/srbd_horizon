@@ -66,6 +66,7 @@ class FullBodyProblem:
         self.nq = kindyn.nq()
         self.nv = kindyn.nv()
         self.ns = ns
+        self.nx = self.nq + self.nv
 
         # create state
         q = prb.createStateVariable("q", kindyn.nq())
@@ -108,22 +109,29 @@ class FullBodyProblem:
         print(f"State: {prb.getState().getVars()}")
         print(f"Input: {prb.getInput().getVars()}")
 
+        self.nu = kindyn.nv() + nc * 3
+        if include_transmission_forces:
+            self.nu += 4
+
         # Formulate discrete time dynamics
         x = cs.vertcat(q, qdot)
         xdot = utils.double_integrator_with_floating_base(q, qdot, qddot)
         prb.setDynamics(xdot)
         prb.setDt(T / ns)
         dae = {'x': x, 'p': qddot, 'ode': xdot, 'quad': 0}
-        F_integrator = integrators.RK2(dae, opts=None)
+        F_integrator = integrators.EULER(dae, opts=None)
 
         # Constraints
+        self.ngx = 0
+        self.ngux = 0
         #1. multiple shooting
         qddot_prev = qddot.getVarOffset(-1)
         x_prev = cs.vertcat(q.getVarOffset(-1), qdot.getVarOffset(-1))
         x_int = F_integrator(x=x_prev, u=qddot_prev, dt=T/ns)
-        prb.createConstraint("multiple_shooting", x_int["f"] - x, nodes=list(range(1, ns + 1)),
+        multiple_shooting = prb.createConstraint("multiple_shooting", x_int["f"] - x, nodes=list(range(1, ns + 1)),
                              bounds=dict(lb=np.zeros(kindyn.nv() + kindyn.nq()),
                                          ub=np.zeros(kindyn.nv() + kindyn.nq())))
+        self.ngux += multiple_shooting.getDim()
 
         #2. Torque limits including underactuation (notice: it includes as well the torque limits for the transmission)
         transmission_frames_left_leg = ["leg_left_length_link", "leg_left_knee_lower_bearing"] # <-- kangaroo related
@@ -143,24 +151,27 @@ class FullBodyProblem:
         tau_max = np.array(torque_lims)
         tau = kin_dyn.InverseDynamics(kindyn, foot_frames, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED).call(q, qdot, qddot,  f, tau_transmission)
         if include_transmission_forces:
-            prb.createConstraint("inverse_dynamics", tau, nodes=list(range(0, ns)), bounds=dict(lb=tau_min, ub=tau_max))
+            inverse_dynamics = prb.createConstraint("inverse_dynamics", tau, nodes=list(range(0, ns)), bounds=dict(lb=tau_min, ub=tau_max))
         else:
-            prb.createConstraint("inverse_dynamics", tau[0:6], nodes=list(range(0, ns)), bounds=dict(lb=tau_min[0:6], ub=tau_max[0:6]))
+            inverse_dynamics = prb.createConstraint("inverse_dynamics", tau[0:6], nodes=list(range(0, ns)), bounds=dict(lb=tau_min[0:6], ub=tau_max[0:6]))
+        self.ngux += inverse_dynamics.getDim()
 
         #3. kinematic constraints for transmission
         LV1 = kindyn.frameVelocity(transmission_frames_left_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         LV2 = kindyn.frameVelocity(transmission_frames_left_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV1 = kindyn.frameVelocity(transmission_frames_right_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV2 = kindyn.frameVelocity(transmission_frames_right_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
-        prb.createConstraint("kinematic_transmission_left_leg", self.kinematicTransmissionVelocity(prb, q, qdot, LV1, LV2))
-        prb.createConstraint("kinematic_transmission_right_leg", self.kinematicTransmissionVelocity(prb, q, qdot, RV1, RV2))
+        kinematic_transmission_left_leg = prb.createConstraint("kinematic_transmission_left_leg", self.kinematicTransmissionVelocity(prb, q, qdot, LV1, LV2))
+        kinematic_transmission_right_leg = prb.createConstraint("kinematic_transmission_right_leg", self.kinematicTransmissionVelocity(prb, q, qdot, RV1, RV2))
+        self.ngx += kinematic_transmission_left_leg.getDim() + kinematic_transmission_right_leg.getDim()
 
         LFK1 = kindyn.fk(transmission_frames_left_leg[0])
         LFK2 = kindyn.fk(transmission_frames_left_leg[1])
         RFK1 = kindyn.fk(transmission_frames_right_leg[0])
         RFK2 = kindyn.fk(transmission_frames_right_leg[1])
-        prb.createConstraint("left_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, LFK1, LFK2))
-        prb.createConstraint("right_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, RFK1, RFK2))
+        left_leg_closed_chain= prb.createConstraint("left_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, LFK1, LFK2))
+        right_leg_closed_chain = prb.createConstraint("right_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, RFK1, RFK2))
+        self.ngx += left_leg_closed_chain.getDim() + right_leg_closed_chain.getDim()
 
         #4. kinematic constraints for the feet + reference
         c_ref = dict()
@@ -705,7 +716,7 @@ class LIPProblem:
     def __init__(self, namespace=""):
         self.namespace = namespace
 
-    def createLIPProblem(self, ns, T):
+    def createLIPProblem(self, ns, T, joint_init):
         prb = problem.Problem(ns, casadi_type=cs.SX)
 
         urdf = rospy.get_param("robot_description", "")
@@ -757,11 +768,6 @@ class LIPProblem:
         # Formulate discrete time dynamics using multiple_shooting and RK2 integrator
         # joint_init is used to initialize the urdf model and retrieve information such as: CoM, Inertia, atc...
         # at the nominal configuration given by joint_init
-
-        joint_init = rospy.get_param("joint_init")
-        if len(joint_init) == 0:
-            print("joint_init parameter is mandatory, exiting...")
-            exit()
 
         if rospy.has_param("world_frame_link"):
             world_frame_link = rospy.get_param("world_frame_link")
