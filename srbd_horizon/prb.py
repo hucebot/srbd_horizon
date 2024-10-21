@@ -11,7 +11,7 @@ from horizon.transcriptions import integrators
 from horizon.solvers import solver
 from horizon.ros.replay_trajectory import *
 
-import utilities
+from srbd_horizon import utilities
 
 def get_parm_from_paramserver(param, namespace, default):
     param_value = 0

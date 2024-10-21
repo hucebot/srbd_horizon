@@ -2,15 +2,11 @@ import scipy
 from ttictoc import tic,toc
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Float32
-import viz
-import wpg
+from srbd_horizon import viz, wpg, ddp, utilities, prb
 import numpy as np
 import keyboard
 import rospy
-import prb as srbd_problem
 import casadi as cs
-import utilities
-import ddp
 
 
 def joy_cb(msg):
@@ -41,7 +37,7 @@ class LipController(MpcController):
 
         self.ns = ns
 
-        self.lip = srbd_problem.LIPProblem()
+        self.lip = prb.LIPProblem()
         self.lip.createLIPProblem(ns, T, initial_joint_state)
 
         if opts == dict():

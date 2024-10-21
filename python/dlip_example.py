@@ -4,7 +4,7 @@ import logging
 import time
 from horizon.ros import utils as horizon_ros_utils
 import rospy
-import mpc
+from srbd_horizon import mpc
 def joy_cb(msg):
     global joy_msg
     joy_msg = msg
