@@ -10,8 +10,8 @@ class steps_phase:
 
         self.step_duration = 0.5
         self.dt = 0.05
-        self.ss_share = 0.8
-        self.ds_share = 0.2
+        self.ss_share = 0.8 # percentuage of the step duration in single support
+        self.ds_share = 0.2 # percentuage of the step duration in double support
         self.step_nodes = int(self.step_duration / self.dt)
 
 
@@ -69,8 +69,6 @@ class steps_phase:
             self.r_cdot_switch.append(0.)
         self.r_cycle.append(c_init_z)
         self.r_cdot_switch.append(1.)
-
-        self.action = ""
 
 
 
