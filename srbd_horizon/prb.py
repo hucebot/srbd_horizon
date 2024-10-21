@@ -91,6 +91,7 @@ class FullBodyProblem:
         number_of_legs = get_parm_from_paramserver("number_of_legs", self.namespace, 2)
         nc = number_of_legs * contact_model
         foot_frames = get_parm_from_paramserver("foot_frames", self.namespace, [])
+        foot_soles = get_parm_from_paramserver("foot_soles", self.namespace, [])
 
         f = dict()
         ones3 = np.ones(3)
@@ -106,12 +107,12 @@ class FullBodyProblem:
             right_actuation_lambda = prb.createInputVariable("right_actuation_lambda", 2)
             right_actuation_lambda.setBounds(-1e4 * np.ones(2), 1e4 * np.ones(2))
 
+        self.nu = self.nv + nc * 3
+        if include_transmission_forces:
+            self.nu += 2 * number_of_legs
+
         print(f"State: {prb.getState().getVars()}")
         print(f"Input: {prb.getInput().getVars()}")
-
-        self.nu = kindyn.nv() + nc * 3
-        if include_transmission_forces:
-            self.nu += 4
 
         # Formulate discrete time dynamics
         x = cs.vertcat(q, qdot)
@@ -122,16 +123,14 @@ class FullBodyProblem:
         F_integrator = integrators.EULER(dae, opts=None)
 
         # Constraints
-        self.ngx = 0
-        self.ngux = 0
         #1. multiple shooting
         qddot_prev = qddot.getVarOffset(-1)
         x_prev = cs.vertcat(q.getVarOffset(-1), qdot.getVarOffset(-1))
         x_int = F_integrator(x=x_prev, u=qddot_prev, dt=T/ns)
-        multiple_shooting = prb.createConstraint("multiple_shooting", x_int["f"] - x, nodes=list(range(1, ns + 1)),
+        prb.createConstraint("multiple_shooting", x_int["f"] - x, nodes=list(range(1, ns + 1)),
                              bounds=dict(lb=np.zeros(kindyn.nv() + kindyn.nq()),
                                          ub=np.zeros(kindyn.nv() + kindyn.nq())))
-        self.ngux += multiple_shooting.getDim()
+
 
         #2. Torque limits including underactuation (notice: it includes as well the torque limits for the transmission)
         transmission_frames_left_leg = ["leg_left_length_link", "leg_left_knee_lower_bearing"] # <-- kangaroo related
@@ -151,27 +150,24 @@ class FullBodyProblem:
         tau_max = np.array(torque_lims)
         tau = kin_dyn.InverseDynamics(kindyn, foot_frames, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED).call(q, qdot, qddot,  f, tau_transmission)
         if include_transmission_forces:
-            inverse_dynamics = prb.createConstraint("inverse_dynamics", tau, nodes=list(range(0, ns)), bounds=dict(lb=tau_min, ub=tau_max))
+            prb.createConstraint("inverse_dynamics", tau, nodes=list(range(0, ns)), bounds=dict(lb=tau_min, ub=tau_max))
         else:
-            inverse_dynamics = prb.createConstraint("inverse_dynamics", tau[0:6], nodes=list(range(0, ns)), bounds=dict(lb=tau_min[0:6], ub=tau_max[0:6]))
-        self.ngux += inverse_dynamics.getDim()
+            prb.createConstraint("inverse_dynamics", tau[0:6], nodes=list(range(0, ns)), bounds=dict(lb=tau_min[0:6], ub=tau_max[0:6]))
 
         #3. kinematic constraints for transmission
         LV1 = kindyn.frameVelocity(transmission_frames_left_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         LV2 = kindyn.frameVelocity(transmission_frames_left_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV1 = kindyn.frameVelocity(transmission_frames_right_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV2 = kindyn.frameVelocity(transmission_frames_right_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
-        kinematic_transmission_left_leg = prb.createConstraint("kinematic_transmission_left_leg", self.kinematicTransmissionVelocity(prb, q, qdot, LV1, LV2))
-        kinematic_transmission_right_leg = prb.createConstraint("kinematic_transmission_right_leg", self.kinematicTransmissionVelocity(prb, q, qdot, RV1, RV2))
-        self.ngx += kinematic_transmission_left_leg.getDim() + kinematic_transmission_right_leg.getDim()
+        prb.createConstraint("kinematic_transmission_left_leg", self.kinematicTransmissionVelocity(prb, q, qdot, LV1, LV2))
+        prb.createConstraint("kinematic_transmission_right_leg", self.kinematicTransmissionVelocity(prb, q, qdot, RV1, RV2))
 
         LFK1 = kindyn.fk(transmission_frames_left_leg[0])
         LFK2 = kindyn.fk(transmission_frames_left_leg[1])
         RFK1 = kindyn.fk(transmission_frames_right_leg[0])
         RFK2 = kindyn.fk(transmission_frames_right_leg[1])
-        left_leg_closed_chain= prb.createConstraint("left_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, LFK1, LFK2))
-        right_leg_closed_chain = prb.createConstraint("right_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, RFK1, RFK2))
-        self.ngx += left_leg_closed_chain.getDim() + right_leg_closed_chain.getDim()
+        prb.createConstraint("left_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, LFK1, LFK2))
+        prb.createConstraint("right_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, RFK1, RFK2))
 
         #4. kinematic constraints for the feet + reference
         c_ref = dict()
@@ -182,7 +178,7 @@ class FullBodyProblem:
         force_switch_weight = rospy.get_param("force_switch_weight", 1e2)
 
         cdotxy_tracking_constraint = dict()
-        for foot_frame in foot_frames:
+        for foot_frame in foot_soles:
             FK = kindyn.fk(foot_frame)
             c_foot_frame = FK(q=q)['ee_pos']
             c[foot_frame] = c_foot_frame
@@ -192,22 +188,33 @@ class FullBodyProblem:
             c_ref[foot_frame].assign(c_init[2], nodes=range(0, ns + 1))
             prb.createConstraint("cz_tracking_" + foot_frame, c_foot_frame[2] - c_ref[foot_frame])
 
-            #cdot_switch[foot_frame] = prb.createParameter("cdot_switch_" + foot_frame, 1)
-            #cdot_switch[foot_frame].assign(1., nodes=range(0, ns + 1))
+            #todo: set parameters for feet rotation
+            co_init = FK(q=joint_init)['ee_rot']
+            co_foot_frame = FK(q=q)['ee_rot']
+            prb.createConstraint("co_tracking_" + foot_frame, co_foot_frame - co_init)
+
+            # cdot_switch[foot_frame] = prb.createParameter("cdot_switch_" + foot_frame, 1)
+            # cdot_switch[foot_frame].assign(1., nodes=range(0, ns + 1))
             DFK = kindyn.frameVelocity(foot_frame, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
             cdot_linear = DFK(q=q, qdot=qdot)['ee_vel_linear']
             cdot[foot_frame] = cdot_linear
-            cdot_angular = DFK(q=q, qdot=qdot)['ee_vel_angular']
-            prb.createConstraint(f"{foot_frame}_cdot_angular", cdot_angular)
-            #prb.createConstraint("cdotxy_tracking_" + foot_frame, cdot_switch[foot_frame] * cdot[foot_frame][0:2])
+            # prb.createConstraint("cdotxy_tracking_" + foot_frame, cdot_switch[foot_frame] * cdot[foot_frame][0:2])
             cdotxy_tracking_constraint[foot_frame] = prb.createConstraint("cdotxy_tracking_" + foot_frame, cdot[foot_frame][0:2])
             prb.createResidual("min_cdot_" + foot_frame, 1e-1 * cdot[foot_frame])
 
+            cdot_angular = DFK(q=q, qdot=qdot)['ee_vel_angular']
+            prb.createResidual("cwxy_tracking_" + foot_frame, 1e-1 * cdot_angular)
+
+
+
+
+        for foot_frame in foot_frames:
             mu = 0.8  # friction coefficient
             R = np.identity(3, dtype=float)  # environment rotation wrt inertial frame
             fc, fc_lb, fc_ub = kin_dyn.linearized_friction_cone(f[foot_frame], mu, R)
-            prb.createIntermediateConstraint(f"{foot_frame}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
+            fc = prb.createIntermediateConstraint(f"{foot_frame}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
             #prb.createIntermediateConstraint("f_" + foot_frame + "_active", (1. - cdot_switch[foot_frame]) * f[foot_frame])
+
 
 
         # Cost function
@@ -250,12 +257,9 @@ class FullBodyProblem:
         prb.createResidual("w_tracking", np.sqrt(w_tracking_gain) * (qdot[3:6] - w_ref), nodes=range(1, ns + 1))
 
         #3. Keep feet separated
-        d_initial_1 = -(initial_foot_position[foot_frames[0]][0:2] - initial_foot_position[foot_frames[4]][0:2])
-        prb.createResidual("relative_pos_y_1_4", 1e2 * (-c[foot_frames[0]][1] + c[foot_frames[4]][1] - d_initial_1[1]))
-        prb.createResidual("relative_pos_x_1_4", 1e2 * (-c[foot_frames[0]][0] + c[foot_frames[4]][0] - d_initial_1[0]))
-        d_initial_2 = -(initial_foot_position[foot_frames[1]][0:2] - initial_foot_position[foot_frames[6]][0:2])
-        prb.createResidual("relative_pos_y_3_6", 1e2 * (-c[foot_frames[3]][1] + c[foot_frames[7]][1] - d_initial_2[1]))
-        prb.createResidual("relative_pos_x_3_6", 1e2 * (-c[foot_frames[3]][0] + c[foot_frames[7]][0] - d_initial_2[0]))
+        d_initial_1 = -(initial_foot_position[foot_soles[0]][0:2] - initial_foot_position[foot_soles[1]][0:2])
+        prb.createResidual("relative_pos_y_1_4", 1e2 * (-c[foot_soles[0]][1] + c[foot_soles[1]][1] - d_initial_1[1]))
+        prb.createResidual("relative_pos_x_1_4", 1e2 * (-c[foot_soles[0]][0] + c[foot_soles[1]][0] - d_initial_1[0]))
 
         self.include_transmission_forces = include_transmission_forces
         self.prb = prb
@@ -267,6 +271,7 @@ class FullBodyProblem:
         self.right_actuation_lambda = right_actuation_lambda
         self.nc = nc
         self.foot_frames = foot_frames
+        self.foot_soles = foot_soles
         self.joint_init = joint_init
         self.m = kindyn.mass()
         self.kindyn = kindyn
@@ -288,19 +293,34 @@ class FullBodyProblem:
 
         self.createsInternalDataStructures()
 
+    def getNonDynamicConstraintList(self):
+        ng = list()
+        for n in range(0, self.prb.getNNodes()):
+            ng.append(0)
+            for fun in self.prb.function_container.getCnstr().values():
+                if fun.getName() != "multiple_shooting" and n < fun.getImpl().size2():
+                    ng[n] += fun.getImpl().size1()
+        print(ng)
+        return ng
+
     def createsInternalDataStructures(self):
-        k = 0
         self._f = dict()
         self._c = dict()
         self._cdot = dict()
         self._c_ref = dict()
         self._cdotxy_tracking_constraint = dict()
-        for foot_frame in self.foot_frames:
-            self._f[k] = self.f[foot_frame]
+
+        k = 0
+        for foot_frame in self.foot_soles:
             self._c[k] = self.c[foot_frame]
             self._cdot[k] = self.cdot[foot_frame]
             self._c_ref[k] = self.c_ref[foot_frame]
             self._cdotxy_tracking_constraint[k] = self.cdotxy_tracking_constraint[foot_frame]
+            k += 1
+
+        k = 0
+        for foot_frame in self.foot_frames:
+            self._f[k] = self.f[foot_frame]
             k += 1
 
     def getStateInputMappingMatrices(self):
@@ -369,11 +389,12 @@ class FullBodyProblem:
             end_node = self.nodes + 1
 
         for j in range(1, end_node):
-            for i in range(0, self.contact_model * self.number_of_legs):
+            for i in range(0, self.number_of_legs):
                 self._cdotxy_tracking_constraint[i].setBounds(
                         self._cdotxy_tracking_constraint[i].getLowerBounds(node=j),
                         self._cdotxy_tracking_constraint[i].getUpperBounds(node=j), nodes=j - 1)
                 self._c_ref[i].assign(self._c_ref[i].getValues(nodes=j), nodes=j - 1)
+            for i in range(0, self.contact_model * self.number_of_legs):
                 if j < self.nodes:
                     l, u = self._f[i].getBounds(node=j)
                     self._f[i].setBounds(l, u, nodes=j - 1)
@@ -385,18 +406,23 @@ class FullBodyProblem:
         if action == "walking":
             self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
+
+            self._c_ref[0].assign(plan.l_cycle[ref_id], nodes=self.nodes)
+            self._cdotxy_tracking_constraint[0].setBounds((1. - plan.l_cdot_switch[ref_id]) * -1e4 * np.ones(2),
+                                                          (1. - plan.l_cdot_switch[ref_id]) * 1e4 * np.ones(2),
+                                                          nodes=self.nodes)
             for i in range(0, self.contact_model):
-                self._c_ref[i].assign(plan.l_cycle[ref_id], nodes=self.nodes)
                 self._f[i].setBounds(plan.l_cdot_switch[ref_id] * -1e4 * np.ones(3),
                                      plan.l_cdot_switch[ref_id] * 1e4 * np.ones(3), nodes=self.nodes-1)
-                self._cdotxy_tracking_constraint[i].setBounds((1. - plan.l_cdot_switch[ref_id]) * -1e4 * np.ones(2),
-                                                             (1. - plan.l_cdot_switch[ref_id]) * 1e4 * np.ones(2), nodes=self.nodes)
+
+            self._c_ref[1].assign(plan.r_cycle[ref_id], nodes=self.nodes)
+            self._cdotxy_tracking_constraint[1].setBounds((1. - plan.r_cdot_switch[ref_id]) * -1e4 * np.ones(2),
+                                                          (1. - plan.r_cdot_switch[ref_id]) * 1e4 * np.ones(2),
+                                                          nodes=self.nodes)
+
             for i in range(self.contact_model, self.contact_model * self.number_of_legs):
-                self._c_ref[i].assign(plan.r_cycle[ref_id], nodes=self.nodes)
                 self._f[i].setBounds(plan.r_cdot_switch[ref_id] * -1e4 * np.ones(3),
                                      plan.r_cdot_switch[ref_id] * 1e4 * np.ones(3), nodes=self.nodes-1)
-                self._cdotxy_tracking_constraint[i].setBounds((1. - plan.r_cdot_switch[ref_id]) * -1e4 * np.ones(2),
-                                                             (1. - plan.r_cdot_switch[ref_id]) * 1e4 * np.ones(2), nodes=self.nodes)
 
         elif action == "jumping":
             self.w_ref.assign([0, 0., 0.], nodes=self.nodes)

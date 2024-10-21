@@ -338,13 +338,24 @@ class SQPSolver(Solver):
             if is_state(var.getImpl().size2()):
                 var_list.append(var.getImpl()[:, prb.getNNodes()-1])
         w = cs.veccat(*var_list)
-        #print(w.print_vector(False))
+
+        #print("\n w = ")
+        #w.print_vector(False)
+        #exit()
+
+        for fun in prb.function_container.getCnstr().values():
+            print(f"constraint name = {fun.getName()}")
+            print(f"    size = {fun.getImpl().size1()} x {fun.getImpl().size2()}")
+
 
         fun_list = list()
+        fun_counter = []
         for n in range(0, prb.getNNodes()):
+            fun_counter.append(0)
             for fun in prb.function_container.getCnstr().values():
                 if n < fun.getImpl().size2():
                     fun_list.append(fun.getImpl()[:, n])
+                    fun_counter[n] += fun.getImpl().size1()
         g = cs.veccat(*fun_list)
 
         # fun_list = list()

@@ -47,21 +47,24 @@ class fullModelController(MpcController):
             if solver == 'osqp':
                 opts = {"gnsqp.max_iter": self.max_iteration,
                         'gnsqp.osqp.scaled_termination': False,
-                        'gnsqp.eps_regularization': 1e-2,  # 1e-2,
+                        'gnsqp.eps_regularization': 1e-6,  # 1e-2,
                         'gnsqp.osqp.polish': False,
                         'gnsqp.osqp.linsys_solver_mkl_pardiso': True,
                         'gnsqp.osqp.verbose': False}
             elif solver == 'fatrop':
                 nx = [self.full_model.nx] * (ns + 1)
                 nu = [self.full_model.nu] * ns
-                ng = [self.full_model.ngx + self.full_model.ngux] * ns
-                ng.append(self.full_model.ngx)
+                nu.append(0)
+                ng = self.full_model.getNonDynamicConstraintList()
+                print(f"nx: {nx}")
+                print(f"nu: {nu}")
+                print(f"ng: {ng}")
                 opts = {"gnsqp.structure_detection": "manual",
                         "gnsqp.N": ns,
                         "gnsqp.nx": nx,
                         "gnsqp.nu": nu,
                         "gnsqp.ng": ng,
-                        'gnsqp.eps_regularization': 1e-2,
+                        'gnsqp.eps_regularization': 1e-6,
                         "gnsqp.max_iter": self.max_iteration}
 
         self.solver = ddp.SQPSolver(self.full_model.prb, qp_solver_plugin=solver, opts=opts)
@@ -101,7 +104,7 @@ class fullModelController(MpcController):
         k = 0
         initial_foot_position = dict()
         # cdot_switch = dict()
-        for foot_frame in self.full_model.foot_frames:
+        for foot_frame in self.full_model.foot_soles:
             initial_foot_position[k] = self.full_model.initial_foot_position[foot_frame]
             # cdot_switch[k] = full_model.cdot_switch[foot_frame]
             k += 1

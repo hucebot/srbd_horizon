@@ -18,6 +18,8 @@
 
     <param name="world_frame_link" value="left_sole_link"/>
 
+    <rosparam param = "foot_soles">["left_sole_link", "right_sole_link"]</rosparam>
+
     <rosparam param = "foot_frames">["left_foot_upper_left", "left_foot_upper_right", "left_foot_lower_left", "left_foot_lower_right",
                                      "right_foot_upper_left", "right_foot_upper_right", "right_foot_lower_left", "right_foot_lower_right"]</rosparam>
 
