@@ -5,10 +5,6 @@ import time
 from horizon.ros import utils as horizon_ros_utils
 import rospy
 from srbd_horizon import mpc
-def joy_cb(msg):
-    global joy_msg
-    joy_msg = msg
-
 
 horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
 time.sleep(3.)
