@@ -1,6 +1,7 @@
 import scipy
 from ttictoc import tic,toc
 from sensor_msgs.msg import Joy, JointState
+from geometry_msgs.msg import WrenchStamped
 from std_msgs.msg import Float32
 from srbd_horizon import viz, wpg, ddp, utilities, prb
 import numpy as np
@@ -9,6 +10,8 @@ import rospy
 import casadi as cs
 from horizon.utils import mat_storer
 import tf
+from horizon.utils import utils, kin_dyn
+
 
 
 def joy_cb(msg):
@@ -42,12 +45,12 @@ class fullModelController(MpcController):
 
         self.joint_state_publisher = rospy.Publisher("joint_states", JointState, queue_size=10)
 
-        solver = 'osqp'
+        solver = 'fatrop'
         if opts == dict():
             if solver == 'osqp':
                 opts = {"gnsqp.max_iter": self.max_iteration,
                         'gnsqp.osqp.scaled_termination': False,
-                        'gnsqp.eps_regularization': 1e-6,  # 1e-2,
+                        'gnsqp.eps_regularization': 1e-2,  # 1e-2,
                         'gnsqp.osqp.polish': False,
                         'gnsqp.osqp.linsys_solver_mkl_pardiso': True,
                         'gnsqp.osqp.verbose': False}
@@ -59,11 +62,8 @@ class fullModelController(MpcController):
                 print(f"nx: {nx}")
                 print(f"nu: {nu}")
                 print(f"ng: {ng}")
-                opts = {"gnsqp.structure_detection": "manual",
-                        "gnsqp.N": ns,
-                        "gnsqp.nx": nx,
-                        "gnsqp.nu": nu,
-                        "gnsqp.ng": ng,
+                opts = {"gnsqp.structure_detection": "auto",
+                        #"gnsqp.N": ns, "gnsqp.nx": nx, "gnsqp.nu": nu, "gnsqp.ng": ng,
                         'gnsqp.eps_regularization': 1e-6,
                         "gnsqp.max_iter": self.max_iteration}
 
@@ -211,6 +211,153 @@ class fullModelController(MpcController):
         viz.publishPointTrj(com, t, "SRB", "world")
 
         return self.solution
+
+class SRBDController(MpcController):
+    def __init__(self, initial_joint_state, ns, T, opts=dict()):
+        MpcController.__init__(self, initial_joint_state)
+
+        self.ns = ns
+
+        max_iteration = rospy.get_param("max_iteration", 20)
+        print(f"max_iteration: {max_iteration}")
+
+        self.solution_time_vec = list()
+
+        self.srbd = prb.SRBDProblem()
+        self.srbd.createSRBDProblem(ns, T)
+
+        self.solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
+        self.srbd_pub = rospy.Publisher("srbd_constraint", WrenchStamped, queue_size=10)
+        self.srbd_msg = WrenchStamped()
+
+        if opts == dict():
+            opts["max_iters"] = 100
+            opts["alpha_converge_threshold"] = 1e-12
+            opts["beta"] = 1e-3
+        self.solver = ddp.DDPSolver(self.srbd.prb, opts=opts)
+
+        # set initial state and warmstart ddp
+        self.state = self.srbd.getInitialState()
+        self.x_warmstart = np.zeros((self.state.shape[0], ns + 1))
+        for i in range(0, ns + 1):
+            self.x_warmstart[:, i] = self.state
+        self.u_warmstart = np.zeros((self.srbd.getStaticInput().shape[0], ns))
+        for i in range(0, ns):
+            self.u_warmstart[:, i] = self.srbd.getStaticInput()
+
+        # define discrete dynamics
+        dae = dict()
+        dae["x"] = cs.vertcat(self.srbd.prb.getState().getVars())
+        dae["ode"] = self.srbd.prb.getDynamics()
+        dae["p"] = cs.vertcat(self.srbd.prb.getInput().getVars())
+        dae["quad"] = 0.
+        self.simulation_euler_integrator = self.solver.get_f(0)
+
+        # Walking patter generator and scheduler
+        self.wpg = wpg.steps_phase(number_of_legs=2, contact_model=self.srbd.contact_model,
+                              c_init_z=self.srbd.initial_foot_position[0][2].__float__())
+
+    def __del__(self):
+        scipy.io.savemat('dsrbd_solution_time.mat', {'solution_time': np.array(self.solution_time_vec)})
+
+    def get_solution(self, state=None):
+        if state is not None:
+            self.state = state
+
+        self.solver.setInitialState(self.state)
+
+        motion = "standing"
+        rotate = False
+        if joy_msg is not None:
+            if joy_msg.buttons[4]:
+                motion = "walking"
+            elif joy_msg.buttons[5]:
+                motion = "jumping"
+            if joy_msg.buttons[3]:
+                rotate = True
+        else:
+            if keyboard.is_pressed('ctrl'):
+                motion = "walking"
+            if keyboard.is_pressed('space'):
+                motion = "jumping"
+
+        # shift reference velocities back by one node
+        for j in range(1, self.ns + 1):
+            self.srbd.rdot_ref.assign(self.srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
+            self.srbd.w_ref.assign(self.srbd.w_ref.getValues(nodes=j), nodes=j - 1)
+            self.srbd.oref.assign(self.srbd.oref.getValues(nodes=j), nodes=j - 1)
+            self.srbd.orientation_tracking_gain.assign(self.srbd.orientation_tracking_gain.getValues(nodes=j), nodes=j - 1)
+
+        # assign new references based on user input
+        if motion == "standing":
+            alphaX, alphaY = 0.1, 0.1
+        else:
+            alphaX, alphaY = 0.5, 0.5
+
+        if joy_msg is not None:
+            self.srbd.rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=self.ns)
+            # w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=ns)
+            # orientation_tracking_gain.assign(cs.sqrt(1e5) if rotate else 0.)
+        else:
+            axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
+            axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
+
+            self.srbd.rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=self.ns)
+            # w_ref.assign([0, 0, 0], nodes=ns)
+            # orientation_tracking_gain.assign(0.)
+
+        self.srbd.shiftContactConstraints()
+        self.srbd.setAction(motion, self.wpg)
+
+        # solve
+        tic()
+        self.solver.solve()
+        solution_time = toc()
+        self.solution_time_pub.publish(solution_time)
+        self.solution_time_vec.append(solution_time)
+        solution = self.solver.getSolutionDict()
+
+        c0_hist = dict()
+        for i in range(0, self.srbd.nc):
+            c0_hist['c' + str(i)] = solution['c' + str(i)][:, 0]
+
+        t = rospy.Time().now()
+        utilities.SRBDTfBroadcaster(solution['r'][:, 0], solution['o'][:, 0], c0_hist, t)
+        for i in range(0, self.srbd.nc):
+            viz.publishContactForce(t, self.srbd.force_scaling * solution['f' + str(i)][:, 0], 'c' + str(i))
+            viz.publishPointTrj(solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
+        viz.SRBDViewer(self.srbd.I, "SRB", t, self.srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
+        viz.publishPointTrj(solution["r"], t, "SRB", "world")
+
+        cc = dict()
+        ff = dict()
+        for i in range(0, self.srbd.nc):
+            cc[i] = solution["c" + str(i)][:, 0]
+            ff[i] = solution["f" + str(i)][:, 0]
+
+        # simulation integration
+        input = solution["u_opt"][:, 0]
+        self.state = np.array(
+            cs.DM(self.simulation_euler_integrator(self.state, input, cs.vcat(list(self.srbd.prb.getParameters().values())))))
+        self.state[3:7] /= cs.norm_2(self.state[3:7])
+        # print(f"state:", solution["x_opt"])
+        # print(f"input:", solution["u_opt"])
+        rddot0 = self.srbd.RDDOT(input)
+        wdot0 = self.srbd.WDOT(self.state, input)
+
+        w_R_b0 = utils.toRot(self.state[3:7])
+        srbd_0 = kin_dyn.SRBD(self.srbd.m / self.srbd.force_scaling, w_R_b0 * self.srbd.I / self.srbd.force_scaling * w_R_b0.T, ff,
+                              solution["r"][:, 0], rddot0, cc, solution["w"][:, 0], wdot0)
+        self.srbd_msg.header.stamp = t
+        self.srbd_msg.wrench.force.x = srbd_0[0]
+        self.srbd_msg.wrench.force.y = srbd_0[1]
+        self.srbd_msg.wrench.force.z = srbd_0[2]
+        self.srbd_msg.wrench.torque.x = srbd_0[3]
+        self.srbd_msg.wrench.torque.y = srbd_0[4]
+        self.srbd_msg.wrench.torque.z = srbd_0[5]
+        self.srbd_pub.publish(self.srbd_msg)
+
+        return self.state, input, rddot0, wdot0, cc
 
 
 class LipController(MpcController):

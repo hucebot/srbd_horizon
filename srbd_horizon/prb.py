@@ -120,14 +120,13 @@ class FullBodyProblem:
         prb.setDynamics(xdot)
         prb.setDt(T / ns)
         dae = {'x': x, 'p': qddot, 'ode': xdot, 'quad': 0}
-        F_integrator = integrators.EULER(dae, opts=None)
+        F_integrator = integrators.RK2(dae, opts=None)
 
         # Constraints
         #1. multiple shooting
-        qddot_prev = qddot.getVarOffset(-1)
-        x_prev = cs.vertcat(q.getVarOffset(-1), qdot.getVarOffset(-1))
-        x_int = F_integrator(x=x_prev, u=qddot_prev, dt=T/ns)
-        prb.createConstraint("multiple_shooting", x_int["f"] - x, nodes=list(range(1, ns + 1)),
+        x_next = cs.vertcat(q.getVarOffset(+1), qdot.getVarOffset(+1))
+        x_int = F_integrator(x=x, u=qddot, dt=T/ns)
+        prb.createConstraint("multiple_shooting", x_next - x_int["f"], nodes=list(range(0, ns)),
                              bounds=dict(lb=np.zeros(kindyn.nv() + kindyn.nq()),
                                          ub=np.zeros(kindyn.nv() + kindyn.nq())))
 
