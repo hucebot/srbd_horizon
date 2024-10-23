@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-import logging
-
 import time
 from horizon.ros import utils as horizon_ros_utils
 import rospy

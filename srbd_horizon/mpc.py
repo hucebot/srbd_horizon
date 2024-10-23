@@ -1,6 +1,6 @@
 import scipy
 from ttictoc import tic,toc
-from sensor_msgs.msg import Joy, JointState
+from sensor_msgs.msg import JointState
 from geometry_msgs.msg import WrenchStamped
 from std_msgs.msg import Float32
 from srbd_horizon import viz, wpg, ddp, utilities, prb
@@ -13,11 +13,6 @@ import tf
 from horizon.utils import utils, kin_dyn
 
 
-
-def joy_cb(msg):
-    global joy_msg
-    joy_msg = msg
-
 class MpcController:
     def __init__(self, initial_joint_state):
         self.initial_joint_state = initial_joint_state
@@ -25,12 +20,30 @@ class MpcController:
         rospy.init_node('mpc_controller', anonymous=True)
 
         self.solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
-        # game controller
-        rospy.Subscriber('/joy', Joy, joy_cb)
-        global joy_msg
-        joy_msg = None
+
+        self.motion = "standing"
+        self.alphaX, self.alphaY = 0.0, 0.0
+        self.axis_x, self.axis_y = 0, 0
 
     def get_solution(self, state=None):
+        self.motion = "standing"
+        if keyboard.is_pressed('ctrl'):
+            self.motion = "walking"
+        if keyboard.is_pressed('space'):
+            self.motion = "jumping"
+
+        # assign new references based on user input
+        if self.motion == "standing":
+            self.alphaX, self.alphaY = 0.1, 0.1
+        else:
+            self.alphaX, self.alphaY = 0.5, 0.5
+
+        self.axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
+        self.axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
+
+        return self.solve(state)
+
+    def solve(self, state):
         raise NotImplementedError()
 
 class fullModelController(MpcController):
@@ -45,7 +58,7 @@ class fullModelController(MpcController):
 
         self.joint_state_publisher = rospy.Publisher("joint_states", JointState, queue_size=10)
 
-        solver = 'fatrop'
+        solver = 'osqp'
         if opts == dict():
             if solver == 'osqp':
                 opts = {"gnsqp.max_iter": self.max_iteration,
@@ -115,7 +128,7 @@ class fullModelController(MpcController):
     def __del__(self):
         None
 
-    def get_solution(self, state=None):
+    def solve(self, state=None):
         if state is not None:
             self.state = state
 
@@ -128,21 +141,6 @@ class fullModelController(MpcController):
         self.full_model.q.setBounds(self.solution['q'][:, 1], self.solution['q'][:, 1], 0)
         self.full_model.qdot.setBounds(self.solution['qdot'][:, 1], self.solution['qdot'][:, 1], 0)
 
-        # references
-        motion = "standing"
-        rotate = False
-        if joy_msg is not None:
-            if joy_msg.buttons[4]:
-                motion = "walking"
-            elif joy_msg.buttons[5]:
-                motion = "jumping"
-            if joy_msg.buttons[3]:
-                rotate = True
-        else:
-            if keyboard.is_pressed('ctrl'):
-                motion = "walking"
-            if keyboard.is_pressed('space'):
-                motion = "jumping"
 
         # shift reference velocities back by one node
         for j in range(1, self.ns + 1):
@@ -152,27 +150,13 @@ class fullModelController(MpcController):
             self.full_model.orientation_tracking_gain.assign(self.full_model.orientation_tracking_gain.getValues(nodes=j),
                                                         nodes=j - 1)
 
-        # assign new references based on user input
-        if motion == "standing":
-            alphaX, alphaY = 0.1, 0.1
-        else:
-            alphaX, alphaY = 0.5, 0.5
 
-        if joy_msg is not None:
-            self.full_model.rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]],
-                                       nodes=self.ns)
-            # w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=ns)
-            # orientation_tracking_gain.assign(cs.sqrt(1e5) if rotate else 0.)
-        else:
-            axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
-            axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
-
-            self.full_model.rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=self.ns)
-            # w_ref.assign([0, 0, 0], nodes=ns)
-            # orientation_tracking_gain.assign(0.)
+        self.full_model.rdot_ref.assign([self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0], nodes=self.ns)
+        # w_ref.assign([0, 0, 0], nodes=ns)
+        # orientation_tracking_gain.assign(0.)
 
         self.full_model.shiftContactConstraints()
-        self.full_model.setAction(motion, self.wpg)
+        self.full_model.setAction(self.motion, self.wpg)
 
         # solve
         tic()
@@ -260,26 +244,11 @@ class SRBDController(MpcController):
     def __del__(self):
         scipy.io.savemat('dsrbd_solution_time.mat', {'solution_time': np.array(self.solution_time_vec)})
 
-    def get_solution(self, state=None):
+    def solve(self, state=None):
         if state is not None:
             self.state = state
 
         self.solver.setInitialState(self.state)
-
-        motion = "standing"
-        rotate = False
-        if joy_msg is not None:
-            if joy_msg.buttons[4]:
-                motion = "walking"
-            elif joy_msg.buttons[5]:
-                motion = "jumping"
-            if joy_msg.buttons[3]:
-                rotate = True
-        else:
-            if keyboard.is_pressed('ctrl'):
-                motion = "walking"
-            if keyboard.is_pressed('space'):
-                motion = "jumping"
 
         # shift reference velocities back by one node
         for j in range(1, self.ns + 1):
@@ -288,26 +257,13 @@ class SRBDController(MpcController):
             self.srbd.oref.assign(self.srbd.oref.getValues(nodes=j), nodes=j - 1)
             self.srbd.orientation_tracking_gain.assign(self.srbd.orientation_tracking_gain.getValues(nodes=j), nodes=j - 1)
 
-        # assign new references based on user input
-        if motion == "standing":
-            alphaX, alphaY = 0.1, 0.1
-        else:
-            alphaX, alphaY = 0.5, 0.5
 
-        if joy_msg is not None:
-            self.srbd.rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=self.ns)
-            # w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=ns)
-            # orientation_tracking_gain.assign(cs.sqrt(1e5) if rotate else 0.)
-        else:
-            axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
-            axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
-
-            self.srbd.rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=self.ns)
-            # w_ref.assign([0, 0, 0], nodes=ns)
-            # orientation_tracking_gain.assign(0.)
+        self.srbd.rdot_ref.assign([self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0], nodes=self.ns)
+        # w_ref.assign([0, 0, 0], nodes=ns)
+        # orientation_tracking_gain.assign(0.)
 
         self.srbd.shiftContactConstraints()
-        self.srbd.setAction(motion, self.wpg)
+        self.srbd.setAction(self.motion, self.wpg)
 
         # solve
         tic()
@@ -404,26 +360,11 @@ class LipController(MpcController):
         scipy.io.savemat('dlip_solution_time.mat', {'solution_time': np.array(self.solution_time_vec)})
 
 
-    def get_solution(self, state=None):
+    def solve(self, state=None):
         if state is not None:
             self.state = state
 
         self.solver.setInitialState(self.state)
-
-        motion = "standing"
-        rotate = False
-        if joy_msg is not None:
-            if joy_msg.buttons[4]:
-                motion = "walking"
-            elif joy_msg.buttons[5]:
-                motion = "jumping"
-            if joy_msg.buttons[3]:
-                rotate = True
-        else:
-            if keyboard.is_pressed('ctrl'):
-                motion = "walking"
-            if keyboard.is_pressed('space'):
-                motion = "jumping"
 
         # shift reference velocities back by one node
         for j in range(1, self.ns + 1):
@@ -436,26 +377,12 @@ class LipController(MpcController):
         else:
             self.lip.eta2_p.assign(self.lip.eta2, nodes=self.ns)
 
-        # assign new references based on user input
-        if motion == "standing":
-            alphaX, alphaY = 0.1, 0.1
-        else:
-            alphaX, alphaY = 0.5, 0.5
-
-        if joy_msg is not None:
-            self.lip.rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=self.ns)
-            # w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=ns)
-            # orientation_tracking_gain.assign(cs.sqrt(1e5) if rotate else 0.)
-        else:
-            axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
-            axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
-
-            self.lip.rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=self.ns)
-            # w_ref.assign([0, 0, 0], nodes=ns)
-            # orientation_tracking_gain.assign(0.)
+        self.lip.rdot_ref.assign([self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0], nodes=self.ns)
+        # w_ref.assign([0, 0, 0], nodes=ns)
+        # orientation_tracking_gain.assign(0.)
 
         self.lip.shiftContactConstraints()
-        self.lip.setAction(motion, self.wpg)
+        self.lip.setAction(self.motion, self.wpg)
 
         # solve
         tic()
