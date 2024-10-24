@@ -63,8 +63,9 @@ class fullModelController(MpcController):
             if solver == 'osqp':
                 opts = {"gnsqp.max_iter": self.max_iteration,
                         'gnsqp.osqp.scaled_termination': False,
-                        'gnsqp.eps_regularization': 1e-2,  # 1e-2,
+                        'gnsqp.eps_regularization': 1e-6,  # 1e-2,
                         'gnsqp.osqp.polish': False,
+                        'gnsqp.jit': True,
                         'gnsqp.osqp.linsys_solver_mkl_pardiso': True,
                         'gnsqp.osqp.verbose': False}
             elif solver == 'fatrop':
@@ -75,10 +76,38 @@ class fullModelController(MpcController):
                 print(f"nx: {nx}")
                 print(f"nu: {nu}")
                 print(f"ng: {ng}")
+                fatrop_opts = {"warm_start_init_point": True,
+                               "iterative_refinement": False,
+                               "mu_init": 1e-5,
+                               #"max_iter": 20,
+                               "accept_every_trial_step": True,
+                               "tol": 1e-3}
                 opts = {"gnsqp.structure_detection": "auto",
                         #"gnsqp.N": ns, "gnsqp.nx": nx, "gnsqp.nu": nu, "gnsqp.ng": ng,
                         'gnsqp.eps_regularization': 1e-6,
-                        "gnsqp.max_iter": self.max_iteration}
+                        'gnsqp.error_on_fail': False,
+                        'gnsqp.debug': False,
+                        "gnsqp.max_iter": self.max_iteration,
+                        "gnsqp.fatrop": fatrop_opts
+                        }
+            elif solver == 'hpipm':
+                nx = [self.full_model.nx] * (ns + 1)
+                nu = [self.full_model.nu] * ns
+                nu.append(0)
+                ng = self.full_model.getNonDynamicConstraintList()
+                print(f"nx: {nx}")
+                print(f"nu: {nu}")
+                print(f"ng: {ng}")
+                opts = {"gnsqp.max_iter": self.max_iteration,
+                        'gnsqp.eps_regularization': 1e-6,
+                        "gnsqp.N": ns, "gnsqp.nx": nx, "gnsqp.nu": nu, "gnsqp.ng": ng,
+                        #"gnsqp.verbose": True,
+                        'gnsqp.jit': True,
+                        'gnsqp.hpipm.mode': "speed",
+                        'gnsqp.hpipm.warm_start': False,
+                        'gnsqp.hpipm.mu0': 1e-1,
+                        'gnsqp.error_on_fail': False
+                        }
 
         self.solver = ddp.SQPSolver(self.full_model.prb, qp_solver_plugin=solver, opts=opts)
         self.full_model.q.setInitialGuess(self.full_model.getInitialState()[0:self.full_model.nq])
