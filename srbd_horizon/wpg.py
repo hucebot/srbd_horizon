@@ -18,7 +18,9 @@ class steps_phase:
         # generate step cycle
         ss_duration = int(self.ss_share * self.step_nodes)
         ds_duration = int(self.ds_share * self.step_nodes)
-        sin = 0.1 * np.sin(np.linspace(0, np.pi, ))
+        p = 0.1 * np.sin(np.linspace(0, np.pi, ))
+        v = 0.1 * np.cos(np.linspace(0, np.pi, ))
+
 
         # JUMP
         self.jump_c = []
@@ -27,7 +29,7 @@ class steps_phase:
             self.jump_c.append(c_init_z)
             self.jump_cdot_switch.append(1.)
         for k in range(0, 8):  # 8 nodes jump
-            self.jump_c.append(c_init_z + sin[k + 1])
+            self.jump_c.append(c_init_z + p[k + 1])
             self.jump_cdot_switch.append(0.)
         for k in range(0, 4):  # 4 nodes down
             self.jump_c.append(c_init_z)
@@ -36,39 +38,51 @@ class steps_phase:
         # WALK
         #left step cycle
         self.l_cycle = []
+        self.dl_cycle = []
         self.l_cdot_switch = []
         for k in range(0, ds_duration):
             self.l_cycle.append(c_init_z)
+            self.dl_cycle.append(0)
             self.l_cdot_switch.append(1.)
         for k in range(0, ss_duration):
-            self.l_cycle.append(c_init_z + sin[k + 1])
+            self.l_cycle.append(c_init_z + p[k + 1])
+            self.dl_cycle.append(v[k + 1])
             self.l_cdot_switch.append(0.)
         for k in range(0, ds_duration):
             self.l_cycle.append(c_init_z)
             self.l_cdot_switch.append(1.)
+            self.dl_cycle.append(0)
         for k in range(0, ss_duration):
             self.l_cycle.append(c_init_z)
             self.l_cdot_switch.append(1.)
+            self.dl_cycle.append(0)
         self.l_cycle.append(c_init_z)
         self.l_cdot_switch.append(1.)
+        self.dl_cycle.append(0.)
 
         # right step cycle
         self.r_cycle = []
+        self.dr_cycle = []
         self.r_cdot_switch = []
         for k in range(0, ds_duration):
             self.r_cycle.append(c_init_z)
+            self.dr_cycle.append(0)
             self.r_cdot_switch.append(1.)
         for k in range(0, ss_duration):
             self.r_cycle.append(c_init_z)
+            self.dr_cycle.append(0)
             self.r_cdot_switch.append(1.)
         for k in range(0, ds_duration):
             self.r_cycle.append(c_init_z)
+            self.dr_cycle.append(0)
             self.r_cdot_switch.append(1.)
         for k in range(0, ss_duration):
-            self.r_cycle.append(c_init_z + sin[k + 1])
+            self.r_cycle.append(c_init_z + p[k + 1])
+            self.dr_cycle.append(v[k + 1])
             self.r_cdot_switch.append(0.)
         self.r_cycle.append(c_init_z)
         self.r_cdot_switch.append(1.)
+        self.dr_cycle.append(0)
 
 
 

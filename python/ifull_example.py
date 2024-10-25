@@ -20,6 +20,7 @@ if len(joint_init) == 0:
     exit()
 
 full_model_mpc = mpc.fullModelController(joint_init, ns, T)
+#full_model_mpc = mpc.fullKinetoStaticModelController(joint_init, ns, T)
 
 # game controller
 rate = rospy.Rate(rospy.get_param("hz", 10)) # 10 Hz
