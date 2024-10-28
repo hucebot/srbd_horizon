@@ -31,7 +31,7 @@ class FullBodyKinetoStaticProblem:
     def kinematicTransmissionVelocity(self, problem, q, qdot, V1, V2):
         lv1 = V1(q=q, qdot=qdot)['ee_vel_linear']
         lv2 = V2(q=q, qdot=qdot)['ee_vel_linear']
-        return cs.vcat([lv2[0] - lv1[0], lv2[2] - lv1[2]])
+        return lv2 - lv1
 
     def kinematicTransmissionPosition(self, problem, q, FK1, FK2):
         lp1 = FK1(q=q)['ee_pos']
@@ -62,7 +62,7 @@ class FullBodyKinetoStaticProblem:
 
         # create state
         h = prb.createStateVariable("h", self.nh)
-        h_lim = 1e6 * np.ones(self.nh)
+        h_lim = 1e8 * np.ones(self.nh)
         h.setBounds(-h_lim, h_lim)
         h.setInitialGuess(np.zeros(self.nh))
 
@@ -101,7 +101,6 @@ class FullBodyKinetoStaticProblem:
         # Formulate discrete time dynamics
         x = cs.vertcat(h, q)
 
-        M = kindyn.crba()
         COM = kindyn.centerOfMass()
         r = COM(q=q)['com']
         c = dict()
@@ -120,18 +119,18 @@ class FullBodyKinetoStaticProblem:
             DFK = kindyn.frameVelocity(foot_frame, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
             cdot = DFK(q=q, qdot=qdot)['ee_vel_linear']
 
-        force_scaling = 10.
+        force_scaling = 1.
         hdot_linear = kindyn.mass() * np.array([0., 0., -9.81])/force_scaling
         hdot_angular = np.zeros(3)
         for foot_frame in foot_frames:
             hdot_linear += f[foot_frame]
             hdot_angular += cs.mtimes(cs.skew(c[foot_frame] - r),  f[foot_frame])
 
-        #w_R_b = utils.toRot(q[3:7])
+        w_R_b = utils.toRot(q[3:7])
         hdot = cs.vertcat(hdot_linear, hdot_angular) # this quantity is in world frame
         xdot = cs.vertcat(hdot,
-                          qdot[0:3], # v is in local frame
-                          utilities.quaternion_integrator(q[3:7], qdot[3:6], base_velocity_reference_frame=cas_kin_dyn.CasadiKinDyn.LOCAL), # w is in local frame
+                          qdot[0:3],
+                          utilities.quaternion_integrator(q[3:7], qdot[3:6], base_velocity_reference_frame=cas_kin_dyn.CasadiKinDyn.LOCAL),
                           qdot[6:])
 
         prb.setDynamics(xdot)
@@ -163,17 +162,19 @@ class FullBodyKinetoStaticProblem:
         LV2 = kindyn.frameVelocity(transmission_frames_left_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV1 = kindyn.frameVelocity(transmission_frames_right_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV2 = kindyn.frameVelocity(transmission_frames_right_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
-        prb.createConstraint("kinematic_transmission_left_leg",
-                             self.kinematicTransmissionVelocity(prb, q, qdot, LV1, LV2), nodes=list(range(0, ns)))
-        prb.createConstraint("kinematic_transmission_right_leg",
-                             self.kinematicTransmissionVelocity(prb, q, qdot, RV1, RV2), nodes=list(range(0, ns)))
-        #
+
         LFK1 = kindyn.fk(transmission_frames_left_leg[0])
         LFK2 = kindyn.fk(transmission_frames_left_leg[1])
         RFK1 = kindyn.fk(transmission_frames_right_leg[0])
         RFK2 = kindyn.fk(transmission_frames_right_leg[1])
-        prb.createConstraint("left_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, LFK1, LFK2))
-        prb.createConstraint("right_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, RFK1, RFK2))
+
+        prb.createConstraint("kinematic_transmission_left_leg",
+                             self.kinematicTransmissionVelocity(prb, q, qdot, LV1, LV2)[[0,2]], nodes=list(range(0, ns)))
+        prb.createConstraint("kinematic_transmission_right_leg",
+                             self.kinematicTransmissionVelocity(prb, q, qdot, RV1, RV2)[[0,2]], nodes=list(range(0, ns)))
+        #
+        prb.createConstraint("left_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, LFK1, LFK2)[[0,2]])
+        prb.createConstraint("right_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, RFK1, RFK2)[[0,2]])
 
         # 4. Kinematic constraints for feet
         cdotxy_tracking_constraint = dict()
@@ -183,7 +184,7 @@ class FullBodyKinetoStaticProblem:
             DFK = kindyn.frameVelocity(foot_frame, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
             cdot = DFK(q=q, qdot=qdot)['ee_vel_linear']
             cdotxy_tracking_constraint[foot_frame] = prb.createConstraint("cdotxy_tracking_" + foot_frame, cdot, nodes=range(0, ns))
-            prb.createResidual("min_cdot_" + foot_frame, 1e1 * cdot[0:2], nodes=range(0, ns))
+            #prb.createResidual("min_cdot_" + foot_frame, 1e1 * cdot[0:2], nodes=range(0, ns))
 
             mu = 0.8  # friction coefficient
             R = np.identity(3, dtype=float)  # environment rotation wrt inertial frame
@@ -194,12 +195,16 @@ class FullBodyKinetoStaticProblem:
 
         # Cost function
         # 1. minimize inputs
-        #for foot_frame in foot_frames:
-        #    prb.createResidual("min_f_" + foot_frame, np.sqrt(1e-2) * f[foot_frame], nodes=list(range(0, ns)))
+        qdot_prev = qdot.getVarOffset(-1)
+        prb.createResidual("min_qdot", np.sqrt(1e-4) * (qdot_prev-qdot)/(T/ns), nodes=list(range(1, ns)))
+        for foot_frame in foot_frames:
+            f_ref = np.array([0, 0, (kindyn.mass()/force_scaling) * 9.81 / 8])
+            prb.createResidual("min_f_" + foot_frame, np.sqrt(1e-3) * (f[foot_frame]-f_ref), nodes=list(range(0, ns)))
         # prb.createResidual("min_left_actuation_lambda", np.sqrt(1e-3) * left_actuation_lambda, nodes=list(range(0, ns)))
         # prb.createResidual("min_right_actuation_lambda", np.sqrt(1e-3) * right_actuation_lambda, nodes=list(range(0, ns)))
         # prb.createResidual("min_q", np.sqrt(1e-3) * (q - joint_init))
-        #prb.createResidual("min_qdot", np.sqrt(1e-3) * qdot)
+        prb.createResidual("min_h", np.sqrt(1e-2) * h)
+        prb.createResidual("min_hdot", np.sqrt(1e3) * hdot, nodes=list(range(0,ns)))
 
         # 2 rdot and omega tracking
         rdot_ref = prb.createParameter('rdot_ref', 3)
@@ -214,13 +219,13 @@ class FullBodyKinetoStaticProblem:
 
         # create cost function terms
         r_tracking_gain = rospy.get_param("r_tracking_gain", 1e4)
-        prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
+        #prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
         rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 5e3)
-        prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns))
+        #prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns))
 
-        #prb.createResidual("z_tracking", np.sqrt(r_tracking_gain) * (q[2] - joint_init[2]), nodes=range(1, ns + 1))
-        #prb.createResidual("v_tracking", np.sqrt(rdot_tracking_gain) * (qdot[0:3] - rdot_ref),
-        #                   nodes=range(1, ns + 1))
+        prb.createResidual("z_tracking", np.sqrt(r_tracking_gain) * (q[2] - joint_init[2]), nodes=range(1, ns + 1))
+        prb.createResidual("v_tracking", np.sqrt(rdot_tracking_gain) * (qdot[0:3] - rdot_ref),
+                           nodes=range(1, ns))
 
         oref = prb.createParameter("oref", 4)
         oref.assign(np.array([0., 0., 0., 1.]))
@@ -245,7 +250,6 @@ class FullBodyKinetoStaticProblem:
         prb.createResidual("relative_pos_y_3_6", 1e2 * (-c[foot_frames[3]][1] + c[foot_frames[7]][1] - d_initial_2[1]))
         prb.createResidual("relative_pos_x_3_6", 1e2 * (-c[foot_frames[3]][0] + c[foot_frames[7]][0] - d_initial_2[0]))
 
-        self.include_transmission_forces = False
         self.prb = prb
         self.f = f
         self.q = q
@@ -317,14 +321,15 @@ class FullBodyKinetoStaticProblem:
         return np.concatenate((np.zeros(self.nh), self.joint_init), axis=0)
 
     def getStaticInput(self):
-        f = [0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8]
+
+        f = [    0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8]
         return np.concatenate((np.zeros(self.nv), f), axis=0)
 
     def getInitialGuess(self):
@@ -426,7 +431,7 @@ class FullBodyProblem:
     def kinematicTransmissionVelocity(self, problem, q, qdot, V1, V2):
         lv1 = V1(q=q, qdot=qdot)['ee_vel_linear']
         lv2 = V2(q=q, qdot=qdot)['ee_vel_linear']
-        return cs.vcat([lv2[0] - lv1[0], lv2[2] - lv1[2]])
+        return lv2 - lv1
 
     def kinematicTransmissionPosition(self, problem, q, FK1, FK2):
         lp1 = FK1(q=q)['ee_pos']
@@ -539,7 +544,7 @@ class FullBodyProblem:
         tau_min = -np.array(torque_lims)
         tau_max = np.array(torque_lims)
         force_scaling = 1.
-        tau = kin_dyn.InverseDynamics(kindyn, foot_frames, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED).call(q, qdot, qddot,  f, tau_ext=tau_transmission) #, force_scaling=force_scaling)
+        tau = kin_dyn.InverseDynamics(kindyn, foot_frames, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED).call(q, qdot, qddot,  f, tau_ext=tau_transmission, wrench_scaling=force_scaling)
         if include_transmission_forces:
             prb.createIntermediateConstraint("inverse_dynamics", tau, nodes=list(range(0, ns)), bounds=dict(lb=tau_min, ub=tau_max))
         else:
@@ -550,15 +555,20 @@ class FullBodyProblem:
         LV2 = kindyn.frameVelocity(transmission_frames_left_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV1 = kindyn.frameVelocity(transmission_frames_right_leg[0], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
         RV2 = kindyn.frameVelocity(transmission_frames_right_leg[1], cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
-        prb.createConstraint("kinematic_transmission_left_leg", self.kinematicTransmissionVelocity(prb, q, qdot, LV1, LV2))
-        prb.createConstraint("kinematic_transmission_right_leg", self.kinematicTransmissionVelocity(prb, q, qdot, RV1, RV2))
 
         LFK1 = kindyn.fk(transmission_frames_left_leg[0])
         LFK2 = kindyn.fk(transmission_frames_left_leg[1])
         RFK1 = kindyn.fk(transmission_frames_right_leg[0])
         RFK2 = kindyn.fk(transmission_frames_right_leg[1])
-        prb.createConstraint("left_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, LFK1, LFK2))
-        prb.createConstraint("right_leg_closed_chain", self.kinematicTransmissionPosition(problem, q, RFK1, RFK2))
+
+        prb.createConstraint("kinematic_transmission_left_leg_vel",
+                             self.kinematicTransmissionVelocity(prb, q, qdot, LV1, LV2)[[0, 2]])
+        prb.createConstraint("kinematic_transmission_right_leg_vel",
+                             self.kinematicTransmissionVelocity(prb, q, qdot, RV1, RV2)[[0, 2]])
+        prb.createConstraint("kinematic_transmission_left_leg_pos",
+                             self.kinematicTransmissionPosition(problem, q, LFK1, LFK2)[[0, 2]])
+        prb.createConstraint("kinematic_transmission_right_leg_pos",
+                             self.kinematicTransmissionPosition(problem, q, RFK1, RFK2)[[0, 2]])
 
         #4. kinematic constraints for the feet + reference
         c_ref = dict()
@@ -588,7 +598,7 @@ class FullBodyProblem:
             DFK = kindyn.frameVelocity(foot_frame, cas_kin_dyn.CasadiKinDyn.LOCAL_WORLD_ALIGNED)
             cdot_linear = DFK(q=q, qdot=qdot)['ee_vel_linear']
             cdotxy_tracking_constraint[foot_frame] = prb.createConstraint("cdotxy_tracking_" + foot_frame, cdot_linear)
-            prb.createResidual("min_cdot_" + foot_frame, 1e-1 * cdot_linear[0:2])
+            #prb.createResidual("min_cdot_" + foot_frame, 1e-1 * cdot_linear[0:2])
 
             cdot_angular = DFK(q=q, qdot=qdot)['ee_vel_angular']
             prb.createResidual("min_cw_" + foot_frame, 1e-1 * cdot_angular)
@@ -607,15 +617,18 @@ class FullBodyProblem:
             mu = 0.8  # friction coefficient
             R = np.identity(3, dtype=float)  # environment rotation wrt inertial frame
             fc, fc_lb, fc_ub = kin_dyn.linearized_friction_cone(f[foot_frame], mu, R)
-            prb.createIntermediateConstraint(f"{foot_frame}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
-
-
+            friction_cone = prb.createIntermediateConstraint(f"{foot_frame}_friction_cone", fc, bounds=dict(lb=fc_lb, ub=fc_ub))
+            l = - 1e8 * np.ones((friction_cone.getLowerBounds().shape[0],1))
+            friction_cone.setLowerBounds(l)
 
         # Cost function
         #1. minimize inputs
-        prb.createResidual("min_qddot", np.sqrt(1e-3) * qddot, nodes=list(range(0, ns)))
+        qddot_prev = qddot.getVarOffset(-1)
+        prb.createResidual("min_qddot", np.sqrt(1e-4) * (qddot_prev - qddot)/(T/ns), nodes=list(range(1, ns)))
+
         for foot_frame in foot_frames:
-            prb.createResidual("min_f_"+foot_frame, np.sqrt(1e-2) * f[foot_frame], nodes=list(range(0, ns)))
+            f_ref = np.array([0., 0., (kindyn.mass()/force_scaling) * 9.81 / 8.])
+            prb.createResidual("min_f_"+foot_frame, np.sqrt(1e-3) * (f[foot_frame]-f_ref), nodes=list(range(0, ns)))
         # prb.createResidual("min_left_actuation_lambda", np.sqrt(1e-3) * left_actuation_lambda, nodes=list(range(0, ns)))
         # prb.createResidual("min_right_actuation_lambda", np.sqrt(1e-3) * right_actuation_lambda, nodes=list(range(0, ns)))
         #prb.createResidual("min_q", np.sqrt(1e-3) * (q - joint_init))
@@ -633,9 +646,9 @@ class FullBodyProblem:
         rdot = COM(q=q, v=qdot)['vcom']
 
         # create cost function terms
-        r_tracking_gain = rospy.get_param("r_tracking_gain", 1e4)
+        r_tracking_gain = rospy.get_param("r_tracking_gain", 1e3)
         #prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
-        rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 5e3)
+        rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 1e3)
         #prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
 
         prb.createResidual("z_tracking", np.sqrt(r_tracking_gain) * (q[2] - joint_init[2]), nodes=range(1, ns + 1))
@@ -647,7 +660,7 @@ class FullBodyProblem:
         quat_error = cs.vcat(utils.quaterion_product(oref, oi))
 
         orientation_tracking_gain = prb.createParameter('orientation_tracking_gain', 1)
-        orientation_tracking_gain.assign(1e4)
+        orientation_tracking_gain.assign(1e3)
         prb.createResidual("o_tracking_xyz", np.sqrt(orientation_tracking_gain) * quat_error[0:3], nodes=range(1, ns + 1))
         prb.createResidual("o_tracking_w", np.sqrt(orientation_tracking_gain) * (quat_error[3] - 1.), nodes=range(1, ns + 1))
         w_tracking_gain = rospy.get_param("w_tracking_gain", 1e2)
@@ -655,7 +668,7 @@ class FullBodyProblem:
 
         #3. Keep feet separated
         d_initial_1 = -(initial_foot_position[foot_soles[0]][0:2] - initial_foot_position[foot_soles[1]][0:2])
-        prb.createResidual("relative_pos_feet", 1e2 * (-c[foot_soles[0]][0:2] + c[foot_soles[1]][0:2] - d_initial_1))
+        prb.createResidual("relative_pos_feet", np.sqrt(1e3) * (-c[foot_soles[0]][0:2] + c[foot_soles[1]][0:2] - d_initial_1))
 
         self.include_transmission_forces = include_transmission_forces
         self.prb = prb
@@ -750,24 +763,24 @@ class FullBodyProblem:
 
     def getStaticInput(self):
         if self.include_transmission_forces:
-            f = [0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
+            f = [0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
                  0., 0., 0., 0.] #<-- 8 contact forces and 4 constraint forces
         else:
-            f = [0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8,
-                 0., 0., self.m * 9.81 / 8]
+            f = [0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8,
+                 0., 0., (self.m/self.force_scaling) * 9.81 / 8]
         return np.concatenate((np.zeros(self.nv), f), axis=0)
 
     def getInitialGuess(self):

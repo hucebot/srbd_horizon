@@ -71,7 +71,7 @@ class fullKinetoStaticModelController(MpcController):
             if solver == 'osqp':
                 opts = {"gnsqp.max_iter": self.max_iteration,
                         'gnsqp.osqp.scaled_termination': False,
-                        'gnsqp.eps_regularization': 1e-3,  # 1e-2,
+                        'gnsqp.eps_regularization': 1e-5,  # 1e-2,
                         'gnsqp.osqp.polish': False,
                         'gnsqp.jit': True,
                         'gnsqp.osqp.linsys_solver_mkl_pardiso': True,
@@ -106,6 +106,17 @@ class fullKinetoStaticModelController(MpcController):
                         'gnsqp.jit': True,
                         "gnsqp.error_on_fail": True,
                         #'gnsqp.hpipm': hpipm_opts
+                        }
+            elif solver == 'proxqp':
+                proxqp_opts = {"verbose": False,
+                               "backend": "sparse"}
+                opts = {"gnsqp.max_iter": self.max_iteration,
+                        'gnsqp.eps_regularization': 1e-6,
+                        'gnsqp.jit': True,
+                        "gnsqp.error_on_fail": False,
+                        "gnsqp.warm_start_primal": True,
+                        "gnsqp.warm_start_dual": True,
+                        'gnsqp.proxqp': proxqp_opts
                         }
 
         self.solver = ddp.SQPSolver(self.full_model.prb, qp_solver_plugin=solver, opts=opts)
@@ -244,11 +255,22 @@ class fullModelController(MpcController):
             if solver == 'osqp':
                 opts = {"gnsqp.max_iter": self.max_iteration,
                         'gnsqp.osqp.scaled_termination': False,
-                        'gnsqp.eps_regularization': 1e-6,  # 1e-2,
+                        #'gnsqp.osqp.check_termination': 0,
+                        #'gnsqp.osqp.alpha': 1.9,
+                        #'gnsqp.osqp.rho': 1.,
+                        #'gnsqp.osqp.scaling': 10,
+                        'gnsqp.eps_regularization': 1e-5,  # 1e-2,
                         'gnsqp.osqp.polish': False,
                         'gnsqp.jit': True,
                         'gnsqp.osqp.linsys_solver_mkl_pardiso': True,
-                        'gnsqp.osqp.verbose': False}
+                        'gnsqp.osqp.verbose': False,
+                        #"gnsqp.osqp.adaptive_rho": False,
+                        #"gnsqp.osqp.rho": 1e-2,
+                        #"gnsqp.osqp.eps_abs": 1e-3,
+                        #"gnsqp.osqp.eps_rel": 1e-3,
+                        #"gnsqp.osqp.eps_prim_inf": 1e-3,
+                        #"gnsqp.osqp.eps_dual_inf": 1e-3,
+                        }
             elif solver == 'fatrop':
                 fatrop_opts = {"warm_start_init_point": True,
                                "iterative_refinement": False,
@@ -273,12 +295,24 @@ class fullModelController(MpcController):
                               "iter_max": 200,
                               }
                 opts = {"gnsqp.max_iter": self.max_iteration,
-                        'gnsqp.eps_regularization': 1e-3,
+                        'gnsqp.eps_regularization': 1e-6,
                         "gnsqp.N": ns, "gnsqp.nx": nx, "gnsqp.nu": nu, "gnsqp.ng": ng,
                         "gnsqp.verbose": True,
                         'gnsqp.jit': True,
-                        "gnsqp.error_on_fail": True,
+                        "gnsqp.error_on_fail": False,
                         #'gnsqp.hpipm': hpipm_opts
+                        }
+            elif solver == 'proxqp':
+                proxqp_opts = {"verbose": True,
+                               "eps_abs": 1e-4, "eps_rel": 1e-4,
+                               "backend": "sparse"}
+                opts = {"gnsqp.max_iter": self.max_iteration,
+                        'gnsqp.eps_regularization': 1e-6,
+                        'gnsqp.jit': True,
+                        "gnsqp.error_on_fail": False,
+                        "gnsqp.warm_start_primal": True,
+                        "gnsqp.warm_start_dual": True,
+                        'gnsqp.proxqp': proxqp_opts
                         }
 
         self.solver = ddp.SQPSolver(self.full_model.prb, qp_solver_plugin=solver, opts=opts)
