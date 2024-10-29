@@ -25,7 +25,9 @@ class MpcController:
         self.alphaX, self.alphaY = 0.0, 0.0
         self.axis_x, self.axis_y = 0, 0
 
-    def get_solution(self, state=None):
+        self.ret = dict()
+
+    def get_solution(self, state=None, visualize=True):
         self.motion = "standing"
         if keyboard.is_pressed('ctrl'):
             self.motion = "walking"
@@ -41,9 +43,16 @@ class MpcController:
         self.axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
         self.axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
 
-        return self.solve(state)
+        self.solve(state)
 
+        if visualize:
+            self.visualize()
+
+        return self.ret
     def solve(self, state):
+        raise NotImplementedError()
+
+    def visualize(self):
         raise NotImplementedError()
 
 class fullKinetoStaticModelController(MpcController):
@@ -594,7 +603,6 @@ class LipController(MpcController):
     def __del__(self):
         scipy.io.savemat('dlip_solution_time.mat', {'solution_time': np.array(self.solution_time_vec)})
 
-
     def solve(self, state=None):
         if state is not None:
             self.state = state
@@ -602,19 +610,9 @@ class LipController(MpcController):
         self.solver.setInitialState(self.state)
 
         # shift reference velocities back by one node
-        for j in range(1, self.ns + 1):
-            self.lip.rdot_ref.assign(self.lip.rdot_ref.getValues(nodes=j), nodes=j - 1)
-            self.lip.eta2_p.assign(self.lip.eta2_p.getValues(nodes=j), nodes=j - 1)
+        self.lip.shiftReferences()
 
-        if self.lip.cdot_switch[0].getValues(self.ns) == 0 and self.lip.cdot_switch[1].getValues(self.ns) == 0 and self.lip.cdot_switch[
-            2].getValues(self.ns) == 0 and self.lip.cdot_switch[3].getValues(self.ns) == 0:
-            self.lip.eta2_p.assign(0., nodes=self.ns)
-        else:
-            self.lip.eta2_p.assign(self.lip.eta2, nodes=self.ns)
-
-        self.lip.rdot_ref.assign([self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0], nodes=self.ns)
-        # w_ref.assign([0, 0, 0], nodes=ns)
-        # orientation_tracking_gain.assign(0.)
+        self.lip.assignReferences(self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0)
 
         self.lip.shiftContactConstraints()
         self.lip.setAction(self.motion, self.wpg)
@@ -627,6 +625,24 @@ class LipController(MpcController):
         self.solution_time_pub.publish(solution_time)
         self.solution = self.solver.getSolutionDict()
 
+
+        input = self.solution["u_opt"][:, 0]
+        self.state = np.array(cs.DM(self.simulation_euler_integrator(self.state, input, self.solver.get_params_value(0))))
+
+        self.rddot0 = self.lip.RDDOT(self.state, input, self.solver.get_params_value(0))
+        self.fzmp = self.lip.m * (np.array([0., 0., 9.81]) + self.rddot0)
+
+        cc = dict()
+        for i in range(0, self.lip.nc):
+            cc[i] = self.solution["c" + str(i)][:, 0]
+
+        self.ret["state"] = state
+        self.ret["input"] = input
+        self.ret["rddot0"] = self.rddot0
+        self.ret["fzmp"] = self.fzmp
+        self.ret["cc"] = cc
+
+    def visualize(self):
         c0_hist = dict()
         for i in range(0, self.lip.nc):
             c0_hist['c' + str(i)] = self.solution['c' + str(i)][:, 0]
@@ -635,21 +651,11 @@ class LipController(MpcController):
         utilities.SRBDTfBroadcaster(self.solution['r'][:, 0], np.array([0., 0., 0., 1.]), c0_hist, t)
         utilities.ZMPTfBroadcaster(self.solution['z'][:, 0], t)
 
-        input = self.solution["u_opt"][:, 0]
-        self.state = np.array(cs.DM(self.simulation_euler_integrator(self.state, input, self.solver.get_params_value(0))))
-
-        rddot0 = self.lip.RDDOT(self.state, input, self.solver.get_params_value(0))
-        fzmp = self.lip.m * (np.array([0., 0., 9.81]) + rddot0)
-        viz.publishContactForce(t, fzmp, 'ZMP')
+        viz.publishContactForce(t, self.fzmp, 'ZMP')
         for i in range(0, self.lip.nc):
             viz.publishPointTrj(self.solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-        viz.SRBDViewer(np.eye(3), "SRB", t, self.lip.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
+        viz.SRBDViewer(np.eye(3), "SRB", t, self.lip.nc)
         viz.publishPointTrj(self.solution["r"], t, "SRB", "world")
         viz.publishPointTrj(self.solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
 
-        cc = dict()
-        for i in range(0, self.lip.nc):
-            cc[i] = self.solution["c" + str(i)][:, 0]
-
-        return self.state, input, rddot0, fzmp
 

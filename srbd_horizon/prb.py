@@ -1264,8 +1264,6 @@ class LIPProblem:
             initial_foot_position[i] = p
             i = i + 1
 
-
-
         # weights
         r_tracking_gain = rospy.get_param("r_tracking_gain", 1e5)
         rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 1e4)
@@ -1273,7 +1271,6 @@ class LIPProblem:
         rel_pos_gain = rospy.get_param("rel_position_gain", 1e4)
         min_cddot_gain = rospy.get_param("min_cddot_gain", 1e0)
 
-        # fixme: where do these come from?
         d_initial_1 = -(initial_foot_position[0][0:2] - initial_foot_position[2][0:2])
         d_initial_2 = -(initial_foot_position[1][0:2] - initial_foot_position[3][0:2])
         
@@ -1308,13 +1305,9 @@ class LIPProblem:
 
         prb.createResidual("zmp_tracking_z", np.sqrt(1e0) * z[2], nodes=range(0, ns))
 
-        prb.createResidual("rel_pos_y_1_4", np.sqrt(rel_pos_gain) * (-c[0][1] + c[2][1] - d_initial_1[1]),
+        prb.createResidual("rel_pos_xy1", np.sqrt(rel_pos_gain) * (-c[0][0:2] + c[2][0:2] - d_initial_1[0:2]),
                            nodes=range(0, ns + 1))
-        prb.createResidual("rel_pos_x_1_4", np.sqrt(rel_pos_gain) * (-c[0][0] + c[2][0] - d_initial_1[0]),
-                           nodes=range(0, ns + 1))
-        prb.createResidual("rel_pos_y_3_6", np.sqrt(rel_pos_gain) * (-c[1][1] + c[3][1] - d_initial_2[1]),
-                           nodes=range(0, ns + 1))
-        prb.createResidual("rel_pos_x_3_6", np.sqrt(rel_pos_gain) * (-c[1][0] + c[3][0] - d_initial_2[0]),
+        prb.createResidual("rel_pos_xy_2", np.sqrt(rel_pos_gain) * (-c[1][0:2] + c[3][0:2] - d_initial_2[0:2]),
                            nodes=range(0, ns + 1))
         prb.createResidual("min_cddot", np.sqrt(min_cddot_gain) * (cddots.getVars()), nodes=range(0, ns))
 
@@ -1371,11 +1364,29 @@ class LIPProblem:
                     self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
                 self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j - 1)
 
+    def shiftReferences(self, end_node=None):
+        if end_node is None:
+            end_node = self.nodes + 1
+
+        for j in range(1, end_node):
+            self.rdot_ref.assign(self.rdot_ref.getValues(nodes=j), nodes=j - 1)
+            self.eta2_p.assign(self.eta2_p.getValues(nodes=j), nodes=j - 1)
+
+    def assignReferences(self, rdot_ref_x, rdot_ref_y, rdot_ref_z):
+        if (self.cdot_switch[0].getValues(self.nodes) == 0 and
+                self.cdot_switch[1].getValues(self.nodes) == 0 and
+                self.cdot_switch[2].getValues(self.nodes) == 0 and
+                self.cdot_switch[3].getValues(self.nodes) == 0):
+            self.eta2_p.assign(0., nodes=self.nodes)
+        else:
+            self.eta2_p.assign(self.eta2, nodes=self.nodes)
+
+        self.rdot_ref.assign([rdot_ref_x, rdot_ref_y, rdot_ref_z], nodes=self.nodes)
+
     def setAction(self, action, plan):
         ref_id = self.step_counter % (2 * plan.step_nodes)
 
         if action == "walking":
-
             for i in range(0, self.contact_model):
                 if self.cdot_switch is not None:
                     self.cdot_switch[i].assign(plan.l_cdot_switch[ref_id], nodes=self.nodes)

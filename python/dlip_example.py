@@ -20,6 +20,6 @@ lip_mpc = mpc.LipController(joint_init, ns, T)
 
 rate = rospy.Rate(rospy.get_param("hz", 10))  # 10 Hz
 while not rospy.is_shutdown():
-    state, input, rddot0, fzmp = lip_mpc.get_solution(state=None)
+    state, input, rddot0, fzmp, cc = lip_mpc.get_solution(state=None, visualize=True)
 
     rate.sleep()
