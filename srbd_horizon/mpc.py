@@ -3,7 +3,7 @@ from ttictoc import tic,toc
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import WrenchStamped
 from std_msgs.msg import Float32
-from srbd_horizon import viz, wpg, ddp, utilities, prb
+from srbd_horizon import viz, wpg, ddp, utilities, prb, LIPProblem
 import numpy as np
 import keyboard
 import rospy
@@ -569,7 +569,7 @@ class LipController(MpcController):
 
         self.ns = ns
 
-        self.lip = prb.LIPProblem()
+        self.lip = LIPProblem.LIPProblem()
         self.lip.createLIPProblem(ns, T, initial_joint_state)
 
         if opts == dict():

@@ -4,6 +4,7 @@ import casadi as cs
 from scipy.spatial.transform import Rotation as R
 from casadi_kin_dyn import pycasadi_kin_dyn as cas_kin_dyn
 from horizon import utils as horizon_utils
+import rospy
 
 def SRBDTfBroadcaster(r, o, c_dict, t):
     br = tf.TransformBroadcaster()
@@ -60,3 +61,12 @@ def quaternion_integrator(q, w, base_velocity_reference_frame = cas_kin_dyn.Casa
         quaterniondot = horizon_utils.utils.quaterion_product(qw, q)
 
     return cs.vertcat(*quaterniondot)
+
+def get_parm_from_paramserver(param, namespace, default):
+    param_value = 0
+    if rospy.has_param(namespace + "/" + param):
+        param_value = rospy.get_param(namespace + "/" + param)
+    else:
+        param_value = rospy.get_param(param, default)
+    print(f"{namespace}/{param}: {param_value}")
+    return param_value
