@@ -2,7 +2,7 @@
 import time
 from horizon.ros import utils as horizon_ros_utils
 import rospy
-from srbd_horizon import mpc
+from srbd_horizon import LIPMpc
 
 horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
 time.sleep(3.)
@@ -16,10 +16,10 @@ if len(joint_init) == 0:
     print("joint_init parameter is mandatory, exiting...")
     exit()
 
-lip_mpc = mpc.LipController(joint_init, ns, T)
+lip_mpc = LIPMpc.LipController(joint_init, ns, T)
 
 rate = rospy.Rate(rospy.get_param("hz", 10))  # 10 Hz
 while not rospy.is_shutdown():
-    state, input, rddot0, fzmp, cc = lip_mpc.get_solution(state=None, visualize=True)
+    sol_dict = lip_mpc.get_solution(state=None, visualize=True)
 
     rate.sleep()
