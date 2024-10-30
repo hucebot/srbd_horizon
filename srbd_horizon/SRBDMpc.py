@@ -59,16 +59,9 @@ class SRBDController(MpcController):
         self.solver.setInitialState(self.state)
 
         # shift reference velocities back by one node
-        for j in range(1, self.ns + 1):
-            self.srbd.rdot_ref.assign(self.srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
-            self.srbd.w_ref.assign(self.srbd.w_ref.getValues(nodes=j), nodes=j - 1)
-            self.srbd.oref.assign(self.srbd.oref.getValues(nodes=j), nodes=j - 1)
-            self.srbd.orientation_tracking_gain.assign(self.srbd.orientation_tracking_gain.getValues(nodes=j), nodes=j - 1)
+        self.srbd.shiftReferences()
 
-
-        self.srbd.rdot_ref.assign([self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0], nodes=self.ns)
-        # w_ref.assign([0, 0, 0], nodes=ns)
-        # orientation_tracking_gain.assign(0.)
+        self.srbd.assignReferences(self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0)
 
         self.srbd.shiftContactConstraints()
         self.srbd.setAction(self.motion, self.wpg)

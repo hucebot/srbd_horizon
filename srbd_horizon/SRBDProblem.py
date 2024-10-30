@@ -298,3 +298,18 @@ class SRBDProblem:
                     self.cdot_switch[i].assign(self.cdot_switch[i].getValues(nodes=j), nodes=j - 1)
                 self.c_ref[i].assign(self.c_ref[i].getValues(nodes=j), nodes=j - 1)
 
+    def shiftReferences(self, end_node=None):
+        if end_node is None:
+            end_node = self.nodes + 1
+
+        for j in range(1, end_node):
+            self.rdot_ref.assign(self.rdot_ref.getValues(nodes=j), nodes=j - 1)
+            self.w_ref.assign(self.w_ref.getValues(nodes=j), nodes=j - 1)
+            self.oref.assign(self.oref.getValues(nodes=j), nodes=j - 1)
+            self.orientation_tracking_gain.assign(self.orientation_tracking_gain.getValues(nodes=j), nodes=j - 1)
+
+    def assignReferences(self, rdot_ref_x, rdot_ref_y, rdot_ref_z):
+        self.rdot_ref.assign([rdot_ref_x, rdot_ref_y, rdot_ref_z], nodes=self.nodes)
+        # w_ref.assign([0, 0, 0], nodes=ns)
+        # orientation_tracking_gain.assign(0.)
+
