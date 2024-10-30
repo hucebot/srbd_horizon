@@ -95,8 +95,9 @@ class SRBDController(MpcController):
         rddot0 = self.srbd.RDDOT(input)
         wdot0 = self.srbd.WDOT(self.state, input)
 
-        w_R_b0 = utils.toRot(self.state[3:7])
-        self.srbd_0 = kin_dyn.SRBD(self.srbd.m / self.srbd.force_scaling, w_R_b0 * self.srbd.I / self.srbd.force_scaling * w_R_b0.T, ff,
+        self.w_R_b0 = utils.toRot(self.state[3:7])
+        self.Iw0 = np.matmul(np.matmul(self.w_R_b0, self.srbd.I / self.srbd.force_scaling), self.w_R_b0.T)
+        self.srbd_0 = kin_dyn.SRBD(self.srbd.m / self.srbd.force_scaling, self.Iw0, ff,
                               self.solution["r"][:, 0], rddot0, cc, self.solution["w"][:, 0], wdot0)
 
         self.ret["state"] = self.state
@@ -112,7 +113,7 @@ class SRBDController(MpcController):
         for i in range(0, self.srbd.nc):
             viz.publishContactForce(t, self.srbd.force_scaling * self.solution['f' + str(i)][:, 0], 'c' + str(i))
             viz.publishPointTrj(self.solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-        viz.SRBDViewer(self.srbd.I, "SRB", t, self.srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
+        viz.SRBDViewer(self.Iw0, "SRB", t, self.srbd.nc)
         viz.publishPointTrj(self.solution["r"], t, "SRB", "world")
 
         self.srbd_msg.header.stamp = t
