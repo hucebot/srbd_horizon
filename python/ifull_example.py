@@ -4,7 +4,7 @@ import rospy
 from horizon.ros import utils as horizon_ros_utils
 
 import time
-from srbd_horizon import mpc
+from srbd_horizon import FullBodyMpc
 
 
 horizon_ros_utils.roslaunch("srbd_horizon", "full_model_kangaroo.launch")
@@ -19,7 +19,7 @@ if len(joint_init) == 0:
     print("joint_init parameter is mandatory, exiting...")
     exit()
 
-full_model_mpc = mpc.fullModelController(joint_init, ns, T)
+full_model_mpc = FullBodyMpc.fullModelController(joint_init, ns, T)
 #full_model_mpc = mpc.fullKinetoStaticModelController(joint_init, ns, T)
 
 # game controller
