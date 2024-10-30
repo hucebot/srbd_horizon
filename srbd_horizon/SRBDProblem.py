@@ -89,7 +89,8 @@ class SRBDProblem:
         print(f"I centroidal in base: {I}")
         w_R_b = utils.toRot(o)
         force_scaling = 1000.
-        rddot, wdot = kin_dyn.fSRBD(m / force_scaling, w_R_b * (I / force_scaling) * w_R_b.T, f, r, c, w)  # scaled forces
+        Iw = cs.mtimes(cs.mtimes(w_R_b, (I / force_scaling)), w_R_b.T)
+        rddot, wdot = kin_dyn.fSRBD(m / force_scaling, Iw, f, r, c, w)  # scaled forces
 
         self.RDDOT = cs.Function('rddot', [prb.getInput().getVars()], [rddot])
         self.WDOT = cs.Function('wdot', [prb.getState().getVars(), prb.getInput().getVars()], [wdot])
@@ -135,7 +136,6 @@ class SRBDProblem:
         min_qddot_gain = rospy.get_param("min_qddot_gain", 1e0)
         min_f_gain = rospy.get_param("min_f_gain", 1e-2)
 
-        # fixme: where do these come from?
         d_initial_1 = -(initial_foot_position[0][0:2] - initial_foot_position[2][0:2])
         d_initial_2 = -(initial_foot_position[1][0:2] - initial_foot_position[3][0:2])
 
