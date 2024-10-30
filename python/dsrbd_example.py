@@ -2,7 +2,7 @@
 import time
 from horizon.ros import utils as horizon_ros_utils
 import rospy
-from srbd_horizon import mpc
+from srbd_horizon import SRBDMpc
 
 
 horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
@@ -17,14 +17,14 @@ if len(joint_init) == 0:
     print("joint_init parameter is mandatory, exiting...")
     exit()
 
-srbd_mpc = mpc.SRBDController(joint_init, ns, T)
+srbd_mpc = SRBDMpc.SRBDController(joint_init, ns, T)
 
 # game controller
 rate = rospy.Rate(rospy.get_param("hz", 10)) # 10 Hz
 
 
 while not rospy.is_shutdown():
-    state, input, rddot0, wdot0, cc = srbd_mpc.get_solution(state=None)
+    sol_dict = srbd_mpc.get_solution(state=None)
 
     rate.sleep()
 
