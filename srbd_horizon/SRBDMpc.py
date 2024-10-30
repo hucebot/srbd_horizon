@@ -61,7 +61,10 @@ class SRBDController(MpcController):
         # shift reference velocities back by one node
         self.srbd.shiftReferences()
 
-        self.srbd.assignReferences(self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0)
+        if self.wx is None:
+            self.srbd.assignReferences(self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0.)
+        else:
+            self.srbd.assignVWReferences(self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0, self.wx, self.wy, self.wz)
 
         self.srbd.shiftContactConstraints()
         self.srbd.setAction(self.motion, self.wpg)

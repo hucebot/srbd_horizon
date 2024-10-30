@@ -24,6 +24,7 @@ class MpcController:
         self.motion = "standing"
         self.alphaX, self.alphaY = 0.0, 0.0
         self.axis_x, self.axis_y = 0, 0
+        self.wx, self.wy, self.wz = 0., 0., 0.
 
         self.ret = dict()
 
@@ -42,6 +43,15 @@ class MpcController:
 
         self.axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
         self.axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
+
+        if keyboard.is_pressed('0'):
+            self.wx = None
+            self.wy = None
+            self.wz = None
+        else:
+            self.wx = keyboard.is_pressed('5') * 0.3 * (keyboard.is_pressed('4') - keyboard.is_pressed('6'))
+            self.wy = 0.3 * (keyboard.is_pressed('8') - keyboard.is_pressed('2'))
+            self.wz = (1. - keyboard.is_pressed('5')) * 0.3 * (keyboard.is_pressed('4') - keyboard.is_pressed('6'))
 
         self.solve(state)
 

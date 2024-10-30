@@ -1,5 +1,7 @@
 import casadi as cs
 import numpy as np
+
+import horizon.utils.utils
 from horizon import problem, variables
 from horizon.utils import utils, kin_dyn, resampler_trajectory, mat_storer
 from horizon.ros.replay_trajectory import *
@@ -59,13 +61,6 @@ class SRBDProblem:
         for i in range(0, nc):
             cddot[i] = prb.createInputVariable("cddot" + str(i), 3)  # Contact i acc
             f[i] = prb.createInputVariable("f" + str(i), 3)  # Contact i forces
-
-        # references
-        rdot_ref = prb.createParameter('rdot_ref', 3)
-        w_ref = prb.createParameter('w_ref', 3)
-
-        rdot_ref.assign([0., 0., 0.], nodes=range(1, ns + 1))
-        w_ref.assign([0., 0., 0.], nodes=range(1, ns + 1))
 
         # Formulate discrete time dynamics using multiple_shooting and RK2 integrator
         # joint_init is used to initialize the urdf model and retrieve information such as: CoM, Inertia, atc...
@@ -168,21 +163,16 @@ class SRBDProblem:
 
         # create cost function terms
         prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
+
         oref = prb.createParameter("oref", 4)
-
-        oref.assign(np.array([0., 0., 0., 1.]))
-        oi = cs.vcat([-o[0], -o[1], -o[2], o[3]])
-        quat_error = cs.vcat(utils.quaterion_product(oref, oi))
-        #print(oref)
-        #print(quat_error)
-
-        #oref.assign(utilities.quat_inverse(np.array([0., 0., 0., 1.])))
-        #quat_error = cs.vcat(utils.quaterion_product(o, oref))
-
-        prb.createResidual("o_tracking_xyz", orientation_tracking_gain * quat_error[0:3], nodes=range(1, ns + 1))
-        prb.createResidual("o_tracking_w", orientation_tracking_gain * (quat_error[3] - 1.), nodes=range(1, ns + 1))
-        prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
+        oref.assign(np.array(joint_init[3:7]), nodes=range(1, ns + 1))
+        w_ref = horizon.utils.utils.quaternion_error(o[0], o[1], o[2], o[3], oref[0], oref[1], oref[2], oref[3])
         prb.createResidual("w_tracking", np.sqrt(w_tracking_gain) * (w - w_ref), nodes=range(1, ns + 1))
+
+        rdot_ref = prb.createParameter('rdot_ref', 3)
+        rdot_ref.assign([0., 0., 0.], nodes=range(1, ns + 1))
+        prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
+
         prb.createResidual("rel_pos_y_1_4", np.sqrt(rel_pos_gain) * (-c[0][1] + c[2][1] - d_initial_1[1]),
                            nodes=range(1, ns + 1))
         prb.createResidual("rel_pos_x_1_4", np.sqrt(rel_pos_gain) * (-c[0][0] + c[2][0] - d_initial_1[0]),
@@ -206,7 +196,7 @@ class SRBDProblem:
         self.c = c
         self.cdot = cdot
         self.c_ref = c_ref
-        self.w_ref = w_ref
+        self.o_ref = oref
         self.orientation_tracking_gain = orientation_tracking_gain
         self.cdot_switch = cdot_switch
         self.contact_model = contact_model
@@ -218,6 +208,9 @@ class SRBDProblem:
         self.number_of_legs = number_of_legs
         self.nodes = ns
         self.step_counter = 0
+
+        self.joint_init = joint_init
+        self.od = cs.DM(joint_init[3:7])
 
     def getInitialState(self):
         return np.array([float(self.com[0]), float(self.com[1]), float(self.com[2]),
@@ -258,7 +251,7 @@ class SRBDProblem:
         ref_id = self.step_counter % (2 * plan.step_nodes)
 
         if action == "walking":
-            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            #self.o_ref.assign([0, 0., 0., 1], nodes=self.nodes)
             self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
             for i in range(0, self.contact_model):
                 if self.cdot_switch is not None:
@@ -271,7 +264,7 @@ class SRBDProblem:
                 self.c_ref[i].assign(plan.r_cycle[ref_id], nodes=self.nodes)
 
         elif action == "jumping":
-            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            #self.o_ref.assign([0, 0., 0., 1], nodes=self.nodes)
             self.orientation_tracking_gain.assign(0., nodes=self.nodes)
             for i in range(0, len(self.c)):
                 if self.cdot_switch is not None:
@@ -279,7 +272,7 @@ class SRBDProblem:
                 self.c_ref[i].assign(plan.jump_c[ref_id], nodes=self.nodes)
 
         else: # stance
-            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
+            #self.o_ref.assign([0, 0., 0., 1], nodes=self.nodes)
             self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
             for i in range(0, len(self.c)):
                 if self.cdot_switch is not None:
@@ -304,12 +297,44 @@ class SRBDProblem:
 
         for j in range(1, end_node):
             self.rdot_ref.assign(self.rdot_ref.getValues(nodes=j), nodes=j - 1)
-            self.w_ref.assign(self.w_ref.getValues(nodes=j), nodes=j - 1)
+            self.o_ref.assign(self.o_ref.getValues(nodes=j), nodes=j - 1)
             self.oref.assign(self.oref.getValues(nodes=j), nodes=j - 1)
             self.orientation_tracking_gain.assign(self.orientation_tracking_gain.getValues(nodes=j), nodes=j - 1)
 
+    def assignVWReferences(self, rdot_ref_x, rdot_ref_y, rdot_ref_z, w_ref_x, w_ref_y, w_ref_z):
+        self.rdot_ref.assign([rdot_ref_x, rdot_ref_y, rdot_ref_z], nodes=self.nodes)
+
+        qw = cs.DM([self.prb.getDt() * 0.5 * w_ref_x,
+                    self.prb.getDt() * 0.5 * w_ref_y,
+                    self.prb.getDt() * 0.5 * w_ref_z,
+                    0.])
+
+
+        quatdot = cs.vertcat(*horizon.utils.utils.quaterion_product(self.od, qw))
+
+        self.od[0] += quatdot[0]
+        self.od[1] += quatdot[1]
+        self.od[2] += quatdot[2]
+        self.od[3] += quatdot[3]
+
+
+        self.o_ref.assign(self.od, nodes=self.nodes)
+
+    def assignVQReferences(self, rdot_ref_x, rdot_ref_y, rdot_ref_z, qx_ref, qy_ref, qz_ref, qw_ref):
+        self.rdot_ref.assign([rdot_ref_x, rdot_ref_y, rdot_ref_z], nodes=self.nodes)
+
+        self.od[0] = qx_ref
+        self.od[1] = qy_ref
+        self.od[2] = qz_ref
+        self.od[3] = qw_ref
+
+        self.o_ref.assign(self.od, nodes=self.nodes)
+
     def assignReferences(self, rdot_ref_x, rdot_ref_y, rdot_ref_z):
         self.rdot_ref.assign([rdot_ref_x, rdot_ref_y, rdot_ref_z], nodes=self.nodes)
-        # w_ref.assign([0, 0, 0], nodes=ns)
-        # orientation_tracking_gain.assign(0.)
+        self.od = cs.DM(self.joint_init[3:7])
+        self.o_ref.assign(self.od, nodes=self.nodes)
+
+
+
 
