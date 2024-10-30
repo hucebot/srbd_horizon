@@ -44,7 +44,7 @@ class MpcController:
         self.axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
         self.axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
 
-        if keyboard.is_pressed('0'):
+        if keyboard.is_pressed('0'): # signal to reset orientation
             self.wx = None
             self.wy = None
             self.wz = None
