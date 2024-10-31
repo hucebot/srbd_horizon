@@ -110,34 +110,16 @@ class ModelSchedulingController(MpcController):
 
         self.lip_solution = self.meta_solver.getSolutionModel(1)
 
-        t = rospy.Time().now()
 
         lip_input = self.lip_solution["u_opt"][:, 0]
         lip_state = self.lip_solution["x_opt"][:, 0]
-        utilities.ZMPTfBroadcaster(self.lip_solution['z'][:, 0], t)
-        # print("zmp: ", lip_solution['z'][2, :])
-        # print("com: ", lip_solution['r'][2, :])
-        # exit()
 
         rddot0 = self.lip.RDDOT(lip_state, lip_input, self.solver_lip.get_params_value(0))
-        fzmp = self.lip.m * (np.array([0., 0., 9.81]) + rddot0)
-        viz.publishContactForce(t, fzmp, 'ZMP')
-        # for i in range(0, lip.nc):
-        #     viz.publishPointTrj(lip_solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-        # viz.SRBDViewer(srbd.I, "SRB", t, lip.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
-        viz.publishPointTrj(self.lip_solution["r"], t, name="COM", frame="world", color=[1., 1., 0.], namespace="LIP")
-        viz.publishPointTrj(self.lip_solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
+        self.fzmp = self.lip.m * (np.array([0., 0., 9.81]) + rddot0)
 
-        c0_hist = dict()
+        self.c0_hist = dict()
         for i in range(0, self.srbd.nc):
-            c0_hist['c' + str(i)] = self.solution['c' + str(i)][:, 0]
-
-        utilities.SRBDTfBroadcaster(self.solution['r'][:, 0], self.solution['o'][:, 0], c0_hist, t)
-        for i in range(0, self.srbd.nc):
-            viz.publishContactForce(t, self.srbd.force_scaling * self.solution['f' + str(i)][:, 0], 'c' + str(i))
-            viz.publishPointTrj(self.solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-        viz.SRBDViewer(self.srbd.I, "SRB", t, self.srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
-        viz.publishPointTrj(self.solution["r"], t, "SRB", "world")
+            self.c0_hist['c' + str(i)] = self.solution['c' + str(i)][:, 0]
 
         cc = dict()
         ff = dict()
@@ -155,17 +137,41 @@ class ModelSchedulingController(MpcController):
         wdot0 = self.srbd.WDOT(self.srbd_state, input)
 
         w_R_b0 = utils.toRot(self.srbd_state[3:7])
-        srbd_0 = kin_dyn.SRBD(self.srbd.m / self.srbd.force_scaling, w_R_b0 * self.srbd.I / self.srbd.force_scaling * w_R_b0.T, ff,
+        self.Iw0 = np.matmul(np.matmul(w_R_b0, self.srbd.I / self.srbd.force_scaling), w_R_b0.T)
+        self.srbd_0 = kin_dyn.SRBD(self.srbd.m / self.srbd.force_scaling, self.Iw0, ff,
                               self.solution["r"][:, 0], rddot0, cc, self.solution["w"][:, 0], wdot0)
-        self.srbd_msg.header.stamp = t
-        self.srbd_msg.wrench.force.x = srbd_0[0]
-        self.srbd_msg.wrench.force.y = srbd_0[1]
-        self.srbd_msg.wrench.force.z = srbd_0[2]
-        self.srbd_msg.wrench.torque.x = srbd_0[3]
-        self.srbd_msg.wrench.torque.y = srbd_0[4]
-        self.srbd_msg.wrench.torque.z = srbd_0[5]
-        self.srbd_pub.publish(self.srbd_msg)
+
+        self.ret['state'] = self.srbd_state
+        #...
 
     def visualize(self):
-        pass
+        t = rospy.Time().now()
+        utilities.ZMPTfBroadcaster(self.lip_solution['z'][:, 0], t)
+        viz.publishContactForce(t, self.fzmp, 'ZMP')
+
+        # for i in range(0, lip.nc):
+        #     viz.publishPointTrj(lip_solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
+        # viz.SRBDViewer(srbd.I, "SRB", t, lip.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
+        viz.publishPointTrj(self.lip_solution["r"], t, name="COM", frame="world", color=[1., 1., 0.], namespace="LIP")
+        viz.publishPointTrj(self.lip_solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
+
+        utilities.SRBDTfBroadcaster(self.solution['r'][:, 0], self.solution['o'][:, 0], self.c0_hist, t)
+        for i in range(0, self.srbd.nc):
+            viz.publishContactForce(t, self.srbd.force_scaling * self.solution['f' + str(i)][:, 0], 'c' + str(i))
+            viz.publishPointTrj(self.solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
+        viz.SRBDViewer(self.srbd.I, "SRB", t, self.srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
+        viz.publishPointTrj(self.solution["r"], t, "SRB", "world")
+
+        self.srbd_msg.header.stamp = t
+        self.srbd_msg.wrench.force.x = self.srbd_0[0]
+        self.srbd_msg.wrench.force.y = self.srbd_0[1]
+        self.srbd_msg.wrench.force.z = self.srbd_0[2]
+        self.srbd_msg.wrench.torque.x = self.srbd_0[3]
+        self.srbd_msg.wrench.torque.y = self.srbd_0[4]
+        self.srbd_msg.wrench.torque.z = self.srbd_0[5]
+        self.srbd_pub.publish(self.srbd_msg)
+
+
+
+
 
