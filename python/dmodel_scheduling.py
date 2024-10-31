@@ -8,15 +8,11 @@ from ttictoc import tic,toc
 from geometry_msgs.msg import WrenchStamped
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Float32
-import viz
-import cartesio #todo: use bindings!
 import numpy as np
 import keyboard
 import rospy
-import prb as srbd_problem
 import casadi as cs
-import utilities
-from horizon.utils import utils, kin_dyn
+from srbd_horizon.mpc import *
 
 
 def joy_cb(msg):
@@ -33,10 +29,15 @@ ns_lip = 10
 T_srbd = 0.5
 T_lip = 0.5
 
-srbd = srbd_problem.SRBDProblem()
-srbd.createSRBDProblem(ns_srbd, T_srbd)
-lip = srbd_problem.LIPProblem()
-lip.createLIPProblem(ns_lip, T_lip)
+joint_init = rospy.get_param("joint_init")
+if len(joint_init) == 0:
+    print("joint_init parameter is mandatory, exiting...")
+    exit()
+
+srbd = SRBDProblem.SRBDProblem()
+srbd.createSRBDProblem(ns_srbd, T_srbd, joint_init)
+lip = LIPProblem.LIPProblem()
+lip.createLIPProblem(ns_lip, T_lip, joint_init)
 
 rospy.init_node('srbd_mpc_test', anonymous=True)
 
@@ -51,7 +52,7 @@ global joy_msg
 joy_msg = None
 
 
-import ddp
+
 opts = dict()
 opts["max_iters"] = 100
 opts["alpha_converge_threshold"] = 1e-12
@@ -92,8 +93,7 @@ dae["quad"] = 0.
 srbd_euler_integrator = solver_srbd.get_f(0)
 
 
-# Walking patter generator and scheduler
-ci = cartesio.cartesIO(["left_sole_link", "right_sole_link"])
+
 
 meta_solver = ddp.MetaSolver(srbd.prb, None)
 
@@ -106,7 +106,6 @@ foo_mapping_function = cs.Function("foo", [lip.prb.getState().getVars()], [cs.DM
 meta_solver.add(solver_lip, foo_mapping_function)
 meta_solver.setMaxIterations(1)
 
-import wpg
 lip_wpg = wpg.steps_phase(number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
 
 solution_time_vec = []
@@ -132,7 +131,7 @@ while not rospy.is_shutdown():
     # shift reference velocities back by one node
     for j in range(1, ns_srbd):
         srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
-        srbd.w_ref.assign(srbd.w_ref.getValues(nodes=j), nodes=j - 1)
+        srbd.o_ref.assign(srbd.o_ref.getValues(nodes=j), nodes=j - 1)
         srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
 
     srbd.shiftContactConstraints(end_node=ns_srbd)
@@ -246,13 +245,7 @@ while not rospy.is_shutdown():
     srbd_msg.wrench.torque.z = srbd_0[5]
     srbd_pub.publish(srbd_msg)
 
-    ci.publish(solution["r"][:, 1], solution["rdot"][:, 1],
-               solution["o"][:, 1], solution["w"][:, 1],
-               {"left_sole_link": [solution['c' + str(0)][:, 1], solution['c' + str(1)][:, 1]],
-                "right_sole_link": [solution['c' + str(2)][:, 1], solution['c' + str(3)][:, 1]]},
-               {"left_sole_link": [solution['cdot' + str(0)][:, 1], solution['cdot' + str(1)][:, 1]],
-                "right_sole_link": [solution['cdot' + str(2)][:, 1], solution['cdot' + str(3)][:, 1]]},
-               t)
+
 
     rate.sleep()
 
