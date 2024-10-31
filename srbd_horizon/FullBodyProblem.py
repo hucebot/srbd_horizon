@@ -238,12 +238,12 @@ class FullBodyProblem:
 
         # create cost function terms
         r_tracking_gain = rospy.get_param("r_tracking_gain", 1e3)
-        #prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
+        prb.createResidual("rz_tracking", np.sqrt(r_tracking_gain) * (r[2] - com[2]), nodes=range(1, ns + 1))
         rdot_tracking_gain = rospy.get_param("rdot_tracking_gain", 1e3)
-        #prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
+        prb.createResidual("rdot_tracking", np.sqrt(rdot_tracking_gain) * (rdot - rdot_ref), nodes=range(1, ns + 1))
 
-        prb.createResidual("z_tracking", np.sqrt(r_tracking_gain) * (q[2] - joint_init[2]), nodes=range(1, ns + 1))
-        prb.createResidual("v_tracking", np.sqrt(rdot_tracking_gain) * (qdot[0:3] - rdot_ref), nodes=range(1, ns + 1))
+        #prb.createResidual("z_tracking", np.sqrt(r_tracking_gain) * (q[2] - joint_init[2]), nodes=range(1, ns + 1))
+        #prb.createResidual("v_tracking", np.sqrt(rdot_tracking_gain) * (qdot[0:3] - rdot_ref), nodes=range(1, ns + 1))
 
         orientation_tracking_gain = prb.createParameter('orientation_tracking_gain', 1)
         orientation_tracking_gain.assign(1e3)

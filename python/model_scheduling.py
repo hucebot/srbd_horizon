@@ -16,30 +16,26 @@ from ttictoc import tic,toc
 from geometry_msgs.msg import WrenchStamped
 from sensor_msgs.msg import Joy, JointState
 from std_msgs.msg import Float32
-import viz
-import cartesio #todo: use bindings!
+from srbd_horizon import viz
 import numpy as np
 import keyboard
 import rospy
-import prb as model_problem
+from srbd_horizon import LIPProblem, SRBDProblem, FullBodyProblem
 import casadi as cs
-import utilities
+from srbd_horizon import utilities
 from casadi_kin_dyn import pycasadi_kin_dyn as cas_kin_dyn
-import ddp
+from srbd_horizon import ddp
 from horizon.utils import mat_storer
 import tf
 
-def joy_cb(msg):
-    global joy_msg
-    joy_msg = msg
 
 horizon_ros_utils.roslaunch("srbd_horizon", "model_scheduling.launch")
 time.sleep(3.)
 
 dt = 0.05
-full_model_ns = 10
-srbd_ns = 5
-lip_ns = 5
+full_model_ns = 4
+srbd_ns = 14
+lip_ns = 2
 
 
 full_params = model_params(ns=full_model_ns, T=full_model_ns * dt)
@@ -51,29 +47,33 @@ solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
 joint_state_publisher = rospy.Publisher("joint_states", JointState, queue_size=10)
 rate = rospy.Rate(rospy.get_param("hz", 10)) # 10 Hz
 
-rospy.Subscriber('/joy', Joy, joy_cb)
-global joy_msg
-joy_msg = None
 
-full_model = model_problem.FullBodyProblem("full_model")
-full_model.createFullBodyProblem(full_params.ns, full_params.T, include_transmission_forces=False)
+joint_init = rospy.get_param("joint_init")
+if len(joint_init) == 0:
+    print("joint_init parameter is mandatory, exiting...")
+    exit()
 
-srbd = model_problem.SRBDProblem("srbd")
-srbd.createSRBDProblem(srbd_params.ns, srbd_params.T)
 
-lip = model_problem.LIPProblem("srbd")
-lip.createLIPProblem(lip_params.ns, lip_params.T)
+full_model = FullBodyProblem.FullBodyProblem("full_model")
+full_model.createFullBodyProblem(full_params.ns, full_params.T, joint_init, include_transmission_forces=False)
+
+srbd = SRBDProblem.SRBDProblem("srbd")
+srbd.createSRBDProblem(srbd_params.ns, srbd_params.T, joint_init)
+
+lip = LIPProblem.LIPProblem("srbd")
+lip.createLIPProblem(lip_params.ns, lip_params.T, joint_init)
 
 
 sqp_opts = dict()
 sqp_opts["gnsqp.max_iter"] = 1
 sqp_opts['gnsqp.osqp.scaled_termination'] = False
-sqp_opts['gnsqp.eps_regularization'] = 1e-5
+sqp_opts['gnsqp.eps_regularization'] = 1e-3
+sqp_opts['gnsqp.jit']: True
 sqp_opts['gnsqp.osqp.polish'] = False
 sqp_opts['gnsqp.osqp.verbose'] = False
 sqp_opts['gnsqp.osqp.linsys_solver_mkl_pardiso'] = True
 
-solver_sqp = ddp.SQPSolver(full_model.prb, qp_solver_plugin='osqp', opts=sqp_opts)
+solver_sqp = ddp.SQPSolver(full_model.prb, qp_solver_plugin='osqp', opts=sqp_opts, add_last_node=False)
 full_model.q.setInitialGuess(full_model.getInitialState()[0:full_model.nq])
 full_model.qdot.setInitialGuess(full_model.getInitialState()[full_model.nq:])
 full_model.qddot.setInitialGuess(full_model.getStaticInput()[0:full_model.nv])
@@ -97,7 +97,7 @@ for foot_frame in full_model.foot_frames:
 
 
 ddp_opts = dict()
-ddp_opts["max_iters"] = 100
+ddp_opts["max_iters"] = 10
 ddp_opts["alpha_converge_threshold"] = 1e-12
 ddp_opts["beta"] = 1e-3
 solver_srbd = ddp.DDPSolver(srbd.prb, opts=ddp_opts)
@@ -210,7 +210,7 @@ solution['q'] = utilities.normalize_quaternion_part_horizon(solution['q'], full_
 joint_state_msg = JointState()
 joint_state_msg.name = full_model.kindyn.joint_names()[2:]
 
-import wpg
+from srbd_horizon import wpg
 lip_wpg = wpg.steps_phase(number_of_legs=2, contact_model=lip.contact_model, c_init_z=lip.initial_foot_position[0][2].__float__())
 
 solution_time_vec = []
@@ -221,39 +221,21 @@ while not rospy.is_shutdown():
 
     motion = "standing"
     rotate = False
-    if joy_msg is not None:
-        if joy_msg.buttons[4]:
-            motion = "walking"
-        elif joy_msg.buttons[5]:
-            motion = "jumping"
-        if joy_msg.buttons[3]:
-            rotate = True
-    else:
-        if keyboard.is_pressed('ctrl'):
-            motion = "walking"
-        if keyboard.is_pressed('space'):
-            motion = "jumping"
+    if keyboard.is_pressed('ctrl'):
+        motion = "walking"
+    if keyboard.is_pressed('space'):
+        motion = "jumping"
 
-    # shift reference velocities back by one node
-    for j in range(1, full_model.ns):
-        full_model.oref.assign(full_model.oref.getValues(nodes=j), nodes=j - 1)
-        full_model.rdot_ref.assign(full_model.rdot_ref.getValues(nodes=j), nodes=j - 1)
-        full_model.w_ref.assign(full_model.w_ref.getValues(nodes=j), nodes=j - 1)
-
+    full_model.shiftReferences(full_model.ns)
     full_model.shiftContactConstraints(end_node=full_model.ns)
 
+    cref = np.zeros((full_model.number_of_legs, 1))
+    cref[0] = (srbd.c_ref[0].getValues(nodes=0) + srbd.c_ref[1].getValues(nodes=0))/2.
+    cref[1] = (srbd.c_ref[2].getValues(nodes=0) + srbd.c_ref[3].getValues(nodes=0))/2.
 
-    cref = np.zeros((full_model.nc, 1))
-    cref[0] = cref[1] = srbd.c_ref[0].getValues(nodes=0)
-    cref[2] = cref[3] = srbd.c_ref[1].getValues(nodes=0)
-    cref[4] = cref[5] = srbd.c_ref[2].getValues(nodes=0)
-    cref[6] = cref[7] = srbd.c_ref[3].getValues(nodes=0)
-
-    vlim = np.zeros((2, full_model.nc))
-    vlim[:, 0] = vlim[:, 1] = (1. - srbd.cdot_switch[0].getValues(nodes=0)) * 1e4 * np.ones(2)
-    vlim[:, 2] = vlim[:, 3] = (1. - srbd.cdot_switch[1].getValues(nodes=0)) * 1e4 * np.ones(2)
-    vlim[:, 4] = vlim[:, 5] = (1. - srbd.cdot_switch[2].getValues(nodes=0)) * 1e4 * np.ones(2)
-    vlim[:, 6] = vlim[:, 7] = (1. - srbd.cdot_switch[3].getValues(nodes=0)) * 1e4 * np.ones(2)
+    vlim = np.zeros((3, full_model.number_of_legs))
+    vlim[:, 0] = (1. - srbd.cdot_switch[0].getValues(nodes=0)) * 1e4 * np.ones(3)
+    vlim[:, 1] = (1. - srbd.cdot_switch[2].getValues(nodes=0)) * 1e4 * np.ones(3)
 
     flim = np.zeros((3, full_model.nc))
     flim[:, 0] = flim[:, 1] = srbd.cdot_switch[0].getValues(nodes=0) * 1e4 * np.ones(3)
@@ -261,18 +243,16 @@ while not rospy.is_shutdown():
     flim[:, 4] = flim[:, 5] = srbd.cdot_switch[2].getValues(nodes=0) * 1e4 * np.ones(3)
     flim[:, 6] = flim[:, 7] = srbd.cdot_switch[3].getValues(nodes=0) * 1e4 * np.ones(3)
 
-    for i in range(0, full_model.nc):
+    for i in range(0, full_model.number_of_legs):
         full_model._cdotxy_tracking_constraint[i].setBounds(-vlim[:, i], vlim[:, i], nodes=full_params.ns-1)
         full_model._c_ref[i].assign(cref[i], nodes=full_params.ns-1)
+    for i in range(0, full_model.nc):
         full_model._f[i].setBounds(-flim[:, i], flim[:, i], nodes=full_params.ns-1)
 
+    full_model.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=0), nodes=full_params.ns - 1)
+    full_model.o_ref.assign(srbd.o_ref.getValues(nodes=0), nodes=full_params.ns - 1)
 
-
-    for j in range(1, srbd_params.ns):
-        srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
-        srbd.w_ref.assign(srbd.w_ref.getValues(nodes=j), nodes=j - 1)
-        srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
-
+    srbd.shiftReferences(srbd_params.ns)
     srbd.shiftContactConstraints(end_node=srbd_params.ns)
 
     srbd.rdot_ref.assign(lip.rdot_ref.getValues(nodes=0), nodes=srbd_params.ns - 1)
@@ -282,17 +262,9 @@ while not rospy.is_shutdown():
     # w_ref??
     # oref??
 
-    for j in range(1, lip_params.ns + 1):
-        lip.rdot_ref.assign(lip.rdot_ref.getValues(nodes=j), nodes=j - 1)
-        lip.eta2_p.assign(lip.eta2_p.getValues(nodes=j), nodes=j - 1)
-
+    lip.shiftReferences()
     lip.shiftContactConstraints()
 
-    if lip.cdot_switch[0].getValues(lip_params.ns) == 0 and lip.cdot_switch[1].getValues(lip_params.ns) == 0 and lip.cdot_switch[
-        2].getValues(lip_params.ns) == 0 and lip.cdot_switch[3].getValues(lip_params.ns) == 0:
-        lip.eta2_p.assign(0., nodes=lip_params.ns)
-    else:
-        lip.eta2_p.assign(lip.eta2, nodes=lip_params.ns)
 
     # assign new references based on user input
     if motion == "standing":
@@ -300,18 +272,12 @@ while not rospy.is_shutdown():
     else:
         alphaX, alphaY = 0.5, 0.5
 
-    if joy_msg is not None:
-        lip.rdot_ref.assign([alphaX * joy_msg.axes[1], alphaY * joy_msg.axes[0], 0.1 * joy_msg.axes[7]], nodes=lip_params.ns)
-        # srbd.rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=ns_srbd)
-        # w_ref.assign([1. * joy_msg.axes[6], -1. * joy_msg.axes[4], 1. * joy_msg.axes[3]], nodes=ns)
-        # orientation_tracking_gain.assign(cs.sqrt(1e5) if rotate else 0.)
-    else:
-        axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
-        axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
+    axis_x = keyboard.is_pressed('up') - keyboard.is_pressed('down')
+    axis_y = keyboard.is_pressed('right') - keyboard.is_pressed('left')
 
-        lip.rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=lip_params.ns)
-        # w_ref.assign([0, 0, 0], nodes=ns_srbd)
-        # orientation_tracking_gain.assign(0.)
+    lip.rdot_ref.assign([alphaX * axis_x, alphaY * axis_y, 0], nodes=lip_params.ns)
+    # w_ref.assign([0, 0, 0], nodes=ns_srbd)
+    # orientation_tracking_gain.assign(0.)
 
     lip.setAction(motion, lip_wpg)
 
@@ -380,11 +346,11 @@ while not rospy.is_shutdown():
         viz.publishPointTrj(c[full_model.foot_frames[i]], t, 'fm_c' + str(i), "world", color=[0., 0., 1.])
 
     # publish center of mass
-    # COM = full_model.kindyn.centerOfMass()
-    # com = np.zeros((3, ns + 1))
-    # for i in range(0, ns + 1):
-    #     com[:, i] = COM(q=solution['q'][:, i])['com'].toarray().flatten()
-    # viz.publishPointTrj(com, t, name="SRB", frame="world", color=[1., 0., 0.])
+    COM = full_model.kindyn.centerOfMass()
+    com = np.zeros((3, full_model.ns + 1))
+    for i in range(0, full_model.ns + 1):
+        com[:, i] = COM(q=solution['q'][:, i])['com'].toarray().flatten()
+    viz.publishPointTrj(com, t, name="FULL", frame="world", color=[1., 0., 0.])
 
     rate.sleep()
 

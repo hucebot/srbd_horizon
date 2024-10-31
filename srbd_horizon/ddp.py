@@ -298,7 +298,7 @@ class DDPSolver(Solver):
 
 class SQPSolver(Solver):
 
-    def __init__(self, prb: Problem, opts: Dict, qp_solver_plugin: str) -> None:
+    def __init__(self, prb: Problem, opts: Dict, qp_solver_plugin: str, add_last_node=True) -> None:
 
         filtered_opts = None
         if opts is not None:
@@ -366,7 +366,10 @@ class SQPSolver(Solver):
         # todo: residual, recedingResidual should be the same class
         # sqp only supports residuals, warn the user otherwise
         fun_list = list()
-        for n in range(0, prb.getNNodes()):
+        N = prb.getNNodes()
+        if not add_last_node:
+            N -= 1
+        for n in range(0, N):
             for fun in self.fun_container.getCost().values():
                 if n < fun.getImpl().size2():
                     fun_to_append = fun.getImpl()[:, n]
