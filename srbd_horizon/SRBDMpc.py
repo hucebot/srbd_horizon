@@ -16,7 +16,7 @@ class SRBDController(MpcController):
         self.solution_time_vec = list()
 
         self.srbd = SRBDProblem.SRBDProblem()
-        self.srbd.createSRBDProblem(ns, T)
+        self.srbd.createSRBDProblem(ns, T, initial_joint_state)
 
         self.solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
         self.srbd_pub = rospy.Publisher("srbd_constraint", WrenchStamped, queue_size=10)

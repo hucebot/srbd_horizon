@@ -12,7 +12,7 @@ class SRBDProblem:
     def __init__(self, namespace=""):
         self.namespace = namespace
 
-    def createSRBDProblem(self, ns, T):
+    def createSRBDProblem(self, ns, T, joint_init):
         prb = problem.Problem(ns, casadi_type=cs.SX)
 
         urdf = rospy.get_param("robot_description", "")
@@ -65,11 +65,6 @@ class SRBDProblem:
         # Formulate discrete time dynamics using multiple_shooting and RK2 integrator
         # joint_init is used to initialize the urdf model and retrieve information such as: CoM, Inertia, atc...
         # at the nominal configuration given by joint_init
-
-        joint_init = rospy.get_param("joint_init")
-        if len(joint_init) == 0:
-            print("joint_init parameter is mandatory, exiting...")
-            exit()
 
         if rospy.has_param("world_frame_link"):
             world_frame_link = rospy.get_param("world_frame_link")
