@@ -246,16 +246,13 @@ class FullBodyProblem:
         prb.createResidual("z_tracking", np.sqrt(r_tracking_gain) * (q[2] - joint_init[2]), nodes=range(1, ns + 1))
         prb.createResidual("v_tracking", np.sqrt(rdot_tracking_gain) * (qdot[0:3] - rdot_ref), nodes=range(1, ns + 1))
 
-        oref = prb.createParameter("oref", 4)
-        oref.assign(np.array([0., 0., 0., 1.]))
-        oi = cs.vcat([-q[3], -q[4], -q[5], q[6]])
-        quat_error = cs.vcat(utils.quaterion_product(oref, oi))
-
         orientation_tracking_gain = prb.createParameter('orientation_tracking_gain', 1)
         orientation_tracking_gain.assign(1e3)
-        prb.createResidual("o_tracking_xyz", np.sqrt(orientation_tracking_gain) * quat_error[0:3], nodes=range(1, ns + 1))
-        prb.createResidual("o_tracking_w", np.sqrt(orientation_tracking_gain) * (quat_error[3] - 1.), nodes=range(1, ns + 1))
         w_tracking_gain = rospy.get_param("w_tracking_gain", 1e2)
+
+        oref = prb.createParameter("oref", 4)
+        oref.assign(np.array(joint_init[3:7]), nodes=range(1, ns + 1))
+        w_ref = horizon.utils.utils.quaternion_error(q[3], q[4], q[5], q[6], oref[0], oref[1], oref[2], oref[3])
         prb.createResidual("w_tracking", np.sqrt(w_tracking_gain) * (qdot[3:6] - w_ref), nodes=range(1, ns + 1))
 
         #3. Keep feet separated
@@ -279,11 +276,9 @@ class FullBodyProblem:
         self.c = c
         self.initial_foot_position = initial_foot_position
         self.c_ref = c_ref
-        self.w_ref = w_ref
         self.orientation_tracking_gain = orientation_tracking_gain
         self.contact_model = contact_model
         self.rdot_ref = rdot_ref
-        self.oref = oref
         #self.cdot_switch = cdot_switch
         self.cdotxy_tracking_constraint = cdotxy_tracking_constraint
 
@@ -294,6 +289,9 @@ class FullBodyProblem:
         self.force_scaling = force_scaling
 
         self.createsInternalDataStructures()
+        self.o_ref= oref
+        self.joint_init = joint_init
+        self.od = cs.DM(joint_init[3:7])
 
     def rot2Quat(self, R):
         w = 0.5 * cs.sqrt(1. + R[0, 0] + R[1, 1] + R[2, 2])
@@ -409,12 +407,20 @@ class FullBodyProblem:
                     l, u = self._f[i].getBounds(node=j)
                     self._f[i].setBounds(l, u, nodes=j - 1)
 
+    def shiftReferences(self, end_node=None):
+        if end_node is None:
+            end_node = self.nodes + 1
+
+        for j in range(1, end_node):
+            self.rdot_ref.assign(self.rdot_ref.getValues(nodes=j), nodes=j - 1)
+            self.o_ref.assign(self.o_ref.getValues(nodes=j), nodes=j - 1)
+            self.orientation_tracking_gain.assign(self.orientation_tracking_gain.getValues(nodes=j), nodes=j - 1)
+
 
     def setAction(self, action, plan):
         ref_id = self.step_counter % (2 * plan.step_nodes)
 
         if action == "walking":
-            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
 
             self._c_ref[0].assign(plan.l_cycle[ref_id], nodes=self.nodes)
@@ -444,7 +450,6 @@ class FullBodyProblem:
                                      plan.r_cdot_switch[ref_id] * 1e4 * np.ones(3), nodes=self.nodes-1)
 
         elif action == "jumping":
-            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(0., nodes=self.nodes)
             for i in range(0, len(self.c)):
                 self._f[i].setBounds(plan.jump_cdot_switch[ref_id] * np.ones(3),
@@ -454,7 +459,6 @@ class FullBodyProblem:
                 self._c_ref[i].assign(plan.jump_c[ref_id], nodes=self.nodes)
 
         else: # stance
-            self.w_ref.assign([0, 0., 0.], nodes=self.nodes)
             self.orientation_tracking_gain.assign(1e2, nodes=self.nodes)
             for i in range(0, len(self.c)):
                 self._c_ref[i].assign(0., nodes=self.nodes)
@@ -462,4 +466,36 @@ class FullBodyProblem:
                 self._cdotxy_tracking_constraint[i].setBounds(0. * np.ones(3), 0. * np.ones(3), nodes=self.nodes)
 
         self.step_counter += 1
+
+    def assignVWReferences(self, rdot_ref_x, rdot_ref_y, rdot_ref_z, w_ref_x, w_ref_y, w_ref_z):
+        self.rdot_ref.assign([rdot_ref_x, rdot_ref_y, rdot_ref_z], nodes=self.nodes)
+
+        qw = cs.DM([self.prb.getDt() * 0.5 * w_ref_x,
+                    self.prb.getDt() * 0.5 * w_ref_y,
+                    self.prb.getDt() * 0.5 * w_ref_z,
+                    0.])
+
+        quatdot = cs.vertcat(*horizon.utils.utils.quaterion_product(self.od, qw))
+
+        self.od[0] += quatdot[0]
+        self.od[1] += quatdot[1]
+        self.od[2] += quatdot[2]
+        self.od[3] += quatdot[3]
+
+        self.o_ref.assign(self.od, nodes=self.nodes)
+
+    def assignVQReferences(self, rdot_ref_x, rdot_ref_y, rdot_ref_z, qx_ref, qy_ref, qz_ref, qw_ref):
+        self.rdot_ref.assign([rdot_ref_x, rdot_ref_y, rdot_ref_z], nodes=self.nodes)
+
+        self.od[0] = qx_ref
+        self.od[1] = qy_ref
+        self.od[2] = qz_ref
+        self.od[3] = qw_ref
+
+        self.o_ref.assign(self.od, nodes=self.nodes)
+
+    def assignReferences(self, rdot_ref_x, rdot_ref_y, rdot_ref_z):
+        self.rdot_ref.assign([rdot_ref_x, rdot_ref_y, rdot_ref_z], nodes=self.nodes)
+        self.od = cs.DM(self.joint_init[3:7])
+        self.o_ref.assign(self.od, nodes=self.nodes)
 

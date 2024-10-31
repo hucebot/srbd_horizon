@@ -151,18 +151,13 @@ class fullModelController(MpcController):
         self.full_model.q.setBounds(self.solution['q'][:, 1], self.solution['q'][:, 1], 0)
         self.full_model.qdot.setBounds(self.solution['qdot'][:, 1], self.solution['qdot'][:, 1], 0)
 
-        # shift reference velocities back by one node
-        for j in range(1, self.ns + 1):
-            self.full_model.rdot_ref.assign(self.full_model.rdot_ref.getValues(nodes=j), nodes=j - 1)
-            self.full_model.w_ref.assign(self.full_model.w_ref.getValues(nodes=j), nodes=j - 1)
-            self.full_model.oref.assign(self.full_model.oref.getValues(nodes=j), nodes=j - 1)
-            self.full_model.orientation_tracking_gain.assign(
-                self.full_model.orientation_tracking_gain.getValues(nodes=j),
-                nodes=j - 1)
+        self.full_model.shiftReferences()
 
-        self.full_model.rdot_ref.assign([self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0], nodes=self.ns)
-        # w_ref.assign([0, 0, 0], nodes=ns)
-        # orientation_tracking_gain.assign(0.)
+        if self.wx is None:
+            self.full_model.assignReferences(self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0.)
+        else:
+            self.full_model.assignVWReferences(self.alphaX * self.axis_x, self.alphaY * self.axis_y, 0, self.wx, self.wy,
+                                         self.wz)
 
         self.full_model.shiftContactConstraints()
         self.full_model.setAction(self.motion, self.wpg)
