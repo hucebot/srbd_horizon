@@ -132,8 +132,7 @@ while not rospy.is_shutdown():
     for j in range(1, ns_srbd):
         srbd.rdot_ref.assign(srbd.rdot_ref.getValues(nodes=j), nodes=j - 1)
         srbd.o_ref.assign(srbd.o_ref.getValues(nodes=j), nodes=j - 1)
-        srbd.oref.assign(srbd.oref.getValues(nodes=j), nodes=j - 1)
-
+        
     srbd.shiftContactConstraints(end_node=ns_srbd)
 
     srbd.rdot_ref.assign(lip.rdot_ref.getValues(nodes=0), nodes=ns_srbd-1)

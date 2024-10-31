@@ -196,7 +196,6 @@ class SRBDProblem:
         self.cdot_switch = cdot_switch
         self.contact_model = contact_model
         self.rdot_ref = rdot_ref
-        self.oref = oref
         self.nc = nc
         self.I = I
 
@@ -293,7 +292,6 @@ class SRBDProblem:
         for j in range(1, end_node):
             self.rdot_ref.assign(self.rdot_ref.getValues(nodes=j), nodes=j - 1)
             self.o_ref.assign(self.o_ref.getValues(nodes=j), nodes=j - 1)
-            self.oref.assign(self.oref.getValues(nodes=j), nodes=j - 1)
             self.orientation_tracking_gain.assign(self.orientation_tracking_gain.getValues(nodes=j), nodes=j - 1)
 
     def assignVWReferences(self, rdot_ref_x, rdot_ref_y, rdot_ref_z, w_ref_x, w_ref_y, w_ref_z):
