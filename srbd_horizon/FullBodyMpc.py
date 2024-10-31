@@ -13,7 +13,7 @@ class fullModelController(MpcController):
         print(f"max_iteration: {self.max_iteration}")
 
         self.full_model = FullBodyProblem.FullBodyProblem()
-        self.full_model.createFullBodyProblem(ns, T, include_transmission_forces=False)
+        self.full_model.createFullBodyProblem(ns, T, initial_joint_state, include_transmission_forces=False)
 
         self.joint_state_publisher = rospy.Publisher("joint_states", JointState, queue_size=10)
 

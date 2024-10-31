@@ -33,13 +33,12 @@ class FullBodyProblem:
     """
     This contains the full body problem for the kangaroo robot including the dynamic part of the transmission model
     """
-    def createFullBodyProblem(self, ns, T, include_transmission_forces):
+    def createFullBodyProblem(self, ns, T, joint_init, include_transmission_forces):
         prb = problem.Problem(ns, casadi_type=cs.SX)
 
         urdf = rospy.get_param("robot_description", "")
         kindyn = cas_kin_dyn.CasadiKinDyn(urdf)
 
-        joint_init = rospy.get_param("joint_init")
         torque_lims = rospy.get_param("torque_lims")
 
         FK1 = kindyn.fk("base_link")
