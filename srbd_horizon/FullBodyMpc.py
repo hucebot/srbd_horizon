@@ -63,7 +63,7 @@ class fullModelController(MpcController):
                         }
             elif solver == 'hpipm':
                 hpipm_opts = {"warm_start": True,
-                              "mode": "robust",
+                              "mode": "speed",
                               "mu0": 1e-6,
                               "abs_form": True,
                               "comp_dual_sol_eq": 1e-3,
@@ -72,7 +72,7 @@ class fullModelController(MpcController):
                 opts = {"gnsqp.max_iter": self.max_iteration,
                         'gnsqp.eps_regularization': 1e-6,
                         "gnsqp.N": ns, "gnsqp.nx": nx, "gnsqp.nu": nu, "gnsqp.ng": ng,
-                        "gnsqp.verbose": True,
+                        "gnsqp.verbose": False,
                         'gnsqp.jit': True,
                         "gnsqp.error_on_fail": False,
                         # 'gnsqp.hpipm': hpipm_opts

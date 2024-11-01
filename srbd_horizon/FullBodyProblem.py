@@ -107,7 +107,7 @@ class FullBodyProblem:
         prb.setDynamics(xdot)
         prb.setDt(T / ns)
         dae = {'x': x, 'p': qddot, 'ode': xdot, 'quad': 0}
-        F_integrator = integrators.RK2(dae, opts=None)
+        F_integrator = integrators.EULER(dae, opts=None)
 
         # Constraints
         #1. multiple shooting
@@ -214,8 +214,8 @@ class FullBodyProblem:
 
         # Cost function
         #1. minimize inputs
-        qddot_prev = qddot.getVarOffset(-1)
-        prb.createResidual("min_qddot", np.sqrt(1e-4) * (qddot_prev - qddot)/(T/ns), nodes=list(range(1, ns)))
+        qddot_next = qddot.getVarOffset(+1)
+        prb.createResidual("min_qddot", np.sqrt(1e-4) * (qddot - qddot_next)/(T/ns), nodes=list(range(0, ns-1)))
 
         for foot_frame in foot_frames:
             f_ref = np.array([0., 0., (kindyn.mass()/force_scaling) * 9.81 / 8.])
