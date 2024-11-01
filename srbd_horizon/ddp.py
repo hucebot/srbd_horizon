@@ -353,8 +353,8 @@ class SQPSolver(Solver):
         for n in range(0, prb.getNNodes()):
             fun_counter.append(0)
             for fun in prb.function_container.getCnstr().values():
-                if n < fun.getImpl().size2():
-                    fun_list.append(fun.getImpl()[:, n])
+                if n in fun.getNodes():
+                    fun_list.append(fun.getImpl()[:, fun.getNodes().tolist().index(n)])
                     fun_counter[n] += fun.getImpl().size1()
         g = cs.veccat(*fun_list)
 
@@ -370,9 +370,11 @@ class SQPSolver(Solver):
         if not add_last_node:
             N -= 1
         for n in range(0, N):
+            print(f"node: {n}")
             for fun in self.fun_container.getCost().values():
-                if n < fun.getImpl().size2():
-                    fun_to_append = fun.getImpl()[:, n]
+                if n in fun.getNodes():
+                    fun_to_append = fun.getImpl()[:, fun.getNodes().tolist().index(n)]
+                    print(f"    cost name = {fun.getName()}")
                 if fun_to_append is not None:
                     if type(fun) in (Cost, RecedingCost):
                         print('warning: sqp solver does not support costs that are not residuals')
@@ -381,7 +383,6 @@ class SQPSolver(Solver):
                         fun_list.append(fun_to_append[:])
                     else:
                         raise Exception('wrong type of function found in fun_container')
-
         f = cs.veccat(*fun_list)
 
         # build parameters
