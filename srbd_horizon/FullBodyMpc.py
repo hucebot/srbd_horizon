@@ -17,6 +17,8 @@ class fullModelController(MpcController):
 
         self.joint_state_publisher = rospy.Publisher("joint_states", JointState, queue_size=10)
 
+        self.solution_time_vec = list()
+
         nx = [self.full_model.nx] * (ns + 1)
         nu = [self.full_model.nu] * ns
         nu.append(0)
@@ -37,7 +39,7 @@ class fullModelController(MpcController):
                         'gnsqp.eps_regularization': 1e-5,  # 1e-2,
                         'gnsqp.osqp.polish': False,
                         'gnsqp.jit': True,
-                        'gnsqp.osqp.linsys_solver_mkl_pardiso': True,
+                        'gnsqp.osqp.linsys_solver_mkl_pardiso': False,
                         'gnsqp.osqp.verbose': False,
                         # "gnsqp.osqp.adaptive_rho": False,
                         # "gnsqp.osqp.rho": 1e-2,
@@ -136,7 +138,7 @@ class fullModelController(MpcController):
                                    c_init_z=initial_foot_position[0][2].__float__())
 
     def __del__(self):
-        None
+        scipy.io.savemat('full_body_solution_time.mat', {'solution_time': np.array(self.solution_time_vec)})
 
     def solve(self, state=None):
         if state is not None:
@@ -165,7 +167,9 @@ class fullModelController(MpcController):
         # solve
         tic()
         self.solver.solve()
-        self.solution_time_pub.publish(toc())
+        solution_time = toc()
+        self.solution_time_pub.publish(solution_time)
+        self.solution_time_vec.append(solution_time)
         self.solution = self.solver.getSolutionDict()
         self.solution['q'] = utilities.normalize_quaternion_part_horizon(self.solution['q'], self.ns)
 
