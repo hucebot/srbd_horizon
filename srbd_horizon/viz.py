@@ -1,5 +1,6 @@
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point, WrenchStamped
+from srbd_horizon import utilities
 import rospy
 
 def publishPointTrj(points, t, name, frame, color = [0.7, 0.7, 0.7], namespace="SRBD"):
@@ -17,6 +18,9 @@ def publishPointTrj(points, t, name, frame, color = [0.7, 0.7, 0.7], namespace="
         p.y = points[1, k]
         p.z = points[2, k]
         marker.points.append(p)
+
+    marker.pose.orientation.x = marker.pose.orientation.y = marker.pose.orientation.z = 0.
+    marker.pose.orientation.w = 1.
 
     marker.color.a = 1.
     marker.scale.x = 0.005
@@ -39,22 +43,22 @@ def publishContactForce(t, f, frame, topic=""):
     else:
         pub = rospy.Publisher(topic, WrenchStamped, queue_size=10).publish(f_msg)
 
-def SRBDViewer(I, base_frame, t, number_of_contacts):
+def SRBDViewer(I, base_frame, t, number_of_contacts, id_offset=0, alpha = 0.8, contact_node_string="", scale=1.0):
     marker = Marker()
     marker.header.frame_id = base_frame
     marker.header.stamp = t
     marker.ns = "SRBD"
-    marker.id = 0
+    marker.id = 0 + id_offset
     marker.type = Marker.SPHERE
     marker.action = Marker.ADD
     marker.pose.position.x = marker.pose.position.y = marker.pose.position.z = 0.
     marker.pose.orientation.x = marker.pose.orientation.y = marker.pose.orientation.z = 0.
     marker.pose.orientation.w = 1.
     a = I[0,0] + I[1,1] + I[2,2]
-    marker.scale.x = 0.5*(I[2,2] + I[1,1])/a
-    marker.scale.y = 0.5*(I[2,2] + I[0,0])/a
-    marker.scale.z = 0.5*(I[0,0] + I[1,1])/a
-    marker.color.a = 0.8
+    marker.scale.x = scale * 0.5 * (I[2,2] + I[1,1])/a
+    marker.scale.y = scale * 0.5 * (I[2,2] + I[0,0])/a
+    marker.scale.z = scale * 0.5 * (I[0,0] + I[1,1])/a
+    marker.color.a = alpha
     marker.color.r = marker.color.g = marker.color.b = 0.7
 
     pub = rospy.Publisher('box', Marker, queue_size=10).publish(marker)
@@ -62,19 +66,33 @@ def SRBDViewer(I, base_frame, t, number_of_contacts):
     marker_array = MarkerArray()
     for i in range(0, number_of_contacts):
         m = Marker()
-        m.header.frame_id = "c" + str(i)
+        m.header.frame_id = "c" + str(i) + contact_node_string
         m.header.stamp = t
         m.ns = "SRBD"
-        m.id = i + 1
+        m.id = i + 1 + id_offset
         m.type = Marker.SPHERE
         m.action = Marker.ADD
         m.pose.position.x = marker.pose.position.y = marker.pose.position.z = 0.
         m.pose.orientation.x = marker.pose.orientation.y = marker.pose.orientation.z = 0.
         m.pose.orientation.w = 1.
         m.scale.x = m.scale.y = m.scale.z = 0.04
-        m.color.a = 0.8
+        m.color.a = alpha
         m.color.r = m.color.g = 0.0
         m.color.b = 1.0
         marker_array.markers.append(m)
 
     pub2 = rospy.Publisher('contacts', MarkerArray, queue_size=10).publish(marker_array)
+
+def visualize_horizon(node_list, solution, nc, t, Inertia, body_name="SRB", offset=100, contact_namespace="", scale=1.0):
+    node_counter = 0
+    for n in node_list:
+        c0_hist = dict()
+        for i in range(0, nc):
+            c0_hist['c' + str(i) + str(n) + contact_namespace] = solution['c' + str(i)][:, n]
+        child = body_name + "_" + str(n)
+        o = [0, 0, 0, 1]
+        if 'o' in solution:
+            o = solution['o'][:, n]
+        utilities.SRBDTfBroadcaster(solution['r'][:, n], o, c0_hist, t, child=child)
+        SRBDViewer(Inertia[node_counter], child, t, nc, id_offset=offset + n, alpha=0.2, contact_node_string=str(n), scale=scale)
+        node_counter+=1
