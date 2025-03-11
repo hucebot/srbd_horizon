@@ -87,18 +87,26 @@ class LipController(MpcController):
         self.ret["cc"] = cc
 
     def visualize(self):
-        c0_hist = dict()
-        for i in range(0, self.lip.nc):
-            c0_hist['c' + str(i)] = self.solution['c' + str(i)][:, 0]
+        #c0_hist = dict()
+        #for i in range(0, self.lip.nc):
+        #    c0_hist['c' + str(i)] = self.solution['c' + str(i)][:, 0]
 
         t = rospy.Time().now()
-        utilities.SRBDTfBroadcaster(self.solution['r'][:, 0], np.array([0., 0., 0., 1.]), c0_hist, t)
+
+        nodes_to_visualize = np.arange(0, self.lip.prb.getNNodes(), 6).tolist()
+        I = list()
+        for n in nodes_to_visualize:
+            I.append(0.1 * np.eye(3))
+        viz.visualize_horizon(nodes_to_visualize, self.solution, self.lip.nc, t, Inertia=I, body_name="SRB", offset=100, scale=0.5)
+
+
+        #utilities.SRBDTfBroadcaster(self.solution['r'][:, 0], np.array([0., 0., 0., 1.]), c0_hist, t)
         utilities.ZMPTfBroadcaster(self.solution['z'][:, 0], t)
 
         viz.publishContactForce(t, self.fzmp, 'ZMP')
         for i in range(0, self.lip.nc):
             viz.publishPointTrj(self.solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-        viz.SRBDViewer(np.eye(3), "SRB", t, self.lip.nc)
+        #viz.SRBDViewer(np.eye(3), "SRB", t, self.lip.nc)
         viz.publishPointTrj(self.solution["r"], t, "SRB", "world")
         viz.publishPointTrj(self.solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
 
