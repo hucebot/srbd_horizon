@@ -4,7 +4,9 @@ from horizon.ros import utils as horizon_ros_utils
 import rospy
 from srbd_horizon import LIPMpc
 
-horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
+#horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_kangaroo_line_feet.launch")
+horizon_ros_utils.roslaunch("srbd_horizon", "SRBD_g1_line_feet.launch")
+
 time.sleep(3.)
 
 # creates HORIZON problem, these parameters can not be tuned at the moment

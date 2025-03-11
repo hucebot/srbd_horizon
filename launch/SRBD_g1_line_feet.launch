@@ -1,0 +1,43 @@
+<launch>
+
+    <!-- LOAD URDF AND SRDF IN PARAM SERVER -->
+    <param name="robot_description" command=" $(find xacro)/xacro --inorder '$(find g1_description)/g1_23dof.urdf'"/>
+
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" >
+        <param name="publish_frequency" type="double" value="250.0" />
+    </node>
+
+    <param name="contact_model" value="2"/>
+    <param name="number_of_legs" value="2"/>
+
+    <param name="transcription_method" value="multiple_shooting"/>
+    <param name="max_iteration" value="5"/>
+
+    <param name="world_frame_link" value="left_foot_point_contact"/>
+    <param name="base_link_frame" value="pelvis"/>
+
+    <rosparam param = "foot_frames">["left_foot_line_contact_upper", "left_foot_line_contact_lower",
+                                     "right_foot_line_contact_upper", "right_foot_line_contact_lower"]</rosparam>
+
+    <rosparam param = "joint_init">[0.0, 0.0, 0.68, 0.0, 0.0, 0.0, 1.0, <!-- px, py, pz, qx, qy, qz, qw -->
+                                    -0.6, 0.0, 0.0, 1.2, -0.6, 0.0, <!--left_hip_pitch_joint left_hip_roll_joint left_hip_yaw_joint left_knee_joint left_ankle_pitch_joint left_ankle_roll_joint-->
+                                    -0.6, 0.0, 0.0, 1.2, -0.6, 0.0, <!--right_hip_pitch_joint right_hip_roll_joint right_hip_yaw_joint right_knee_joint right_ankle_pitch_joint right_ankle_roll_joint-->
+                                    0.0,  <!-- waist_yaw_joint -->
+                                    0., 0., 0., 0., 0., <!-- left_shoulder_pitch_joint, left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint -->
+                                    0., 0., 0., 0., 0., <!-- right_shoulder_pitch_joint, right_shoulder_roll_joint, right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint -->
+                                    ]</rosparam> 
+
+    <node pkg="joy" type="joy_node" name="joy_node">
+        <param name="dev" type="string" value="/dev/input/js0" />
+        <!-- param name="autorepeat_rate" type="double" value="10." / -->
+        <param name="deadzone" type="double" value="0.2" />
+    </node>
+
+
+    <!-- RVIZ -->
+    <node type="rviz" name="rviz" pkg="rviz" args="-d $(find srbd_horizon)/launch/SRBD_horizon.rviz"/>
+
+
+</launch>
+
+

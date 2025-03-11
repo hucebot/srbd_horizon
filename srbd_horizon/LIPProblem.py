@@ -65,7 +65,10 @@ class LIPProblem:
 
         if rospy.has_param("world_frame_link"):
             world_frame_link = rospy.get_param("world_frame_link")
-            utilities.setWorld(world_frame_link, kindyn, joint_init)
+            base_link_frame = "base_link"
+            if rospy.has_param("base_link_frame"):
+                base_link_frame = rospy.get_param("base_link_frame")
+            utilities.setWorld(world_frame_link, kindyn, joint_init, base_link=base_link_frame)
             print(f"world_frame_link: {world_frame_link}")
 
         # initialize com state and com velocity
