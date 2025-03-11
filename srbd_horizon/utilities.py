@@ -6,11 +6,11 @@ from casadi_kin_dyn import pycasadi_kin_dyn as cas_kin_dyn
 from horizon import utils as horizon_utils
 import rospy
 
-def SRBDTfBroadcaster(r, o, c_dict, t):
+def SRBDTfBroadcaster(r, o, c_dict, t, child="SRB", parent="world"):
     br = tf.TransformBroadcaster()
-    br.sendTransform(r,o,t,"SRB","world")
+    br.sendTransform(r,o,t,child,parent)
     for key, val in c_dict.items():
-        br.sendTransform(val, [0., 0., 0., 1.], t, key, "world")
+        br.sendTransform(val, [0., 0., 0., 1.], t, key, parent)
 
 def ZMPTfBroadcaster(zmp, t):
     br = tf.TransformBroadcaster()
