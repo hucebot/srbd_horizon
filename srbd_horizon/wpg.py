@@ -28,10 +28,10 @@ class steps_phase:
         for k in range(0, 8):  # 8 nodes down
             self.jump_c.append(c_init_z)
             self.jump_cdot_switch.append(1.)
-        for k in range(0, 8):  # 8 nodes jump
+        for k in range(0, 6):  # 8 nodes jump
             self.jump_c.append(c_init_z + p[k + 1])
             self.jump_cdot_switch.append(0.)
-        for k in range(0, 4):  # 4 nodes down
+        for k in range(0, 6):  # 4 nodes down
             self.jump_c.append(c_init_z)
             self.jump_cdot_switch.append(1.)
 
