@@ -155,11 +155,29 @@ class ModelSchedulingController(MpcController):
         viz.publishPointTrj(self.lip_solution["r"], t, name="COM", frame="world", color=[1., 1., 0.], namespace="LIP")
         viz.publishPointTrj(self.lip_solution["z"], t, name="ZMP", frame="world", color=[0., 1., 1.], namespace="LIP")
 
-        utilities.SRBDTfBroadcaster(self.solution['r'][:, 0], self.solution['o'][:, 0], self.c0_hist, t)
+        nodes_to_visualize = [0, 5]
+        I = list()
+        for n in nodes_to_visualize:
+            I.append(np.eye(3))
+        viz.visualize_horizon(nodes_to_visualize, self.lip_solution, self.lip.nc, t, Inertia=I, body_name="LIP", offset=100, contact_namespace="LIP", scale=0.5)
+
+
+        #utilities.SRBDTfBroadcaster(self.solution['r'][:, 0], self.solution['o'][:, 0], self.c0_hist, t)
         for i in range(0, self.srbd.nc):
-            viz.publishContactForce(t, self.srbd.force_scaling * self.solution['f' + str(i)][:, 0], 'c' + str(i))
+            viz.publishContactForce(t, self.srbd.force_scaling * self.solution['f' + str(i)][:, 0], 'c' + str(i) + str(0))
             viz.publishPointTrj(self.solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-        viz.SRBDViewer(self.srbd.I, "SRB", t, self.srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
+
+        nodes_to_visualize = [0, 5, 10]
+        Iw = list()
+        for n in nodes_to_visualize:
+            w_R_b = utils.toRot(self.solution["o"][:, n])
+            Iwn = np.matmul(np.matmul(w_R_b, self.srbd.I / self.srbd.force_scaling), w_R_b.T)
+            Iw.append(Iwn)
+
+        viz.visualize_horizon(nodes_to_visualize, self.solution, self.srbd.nc, t, Inertia=Iw, body_name="SRB",
+                              offset=1000)
+
+        #viz.SRBDViewer(self.srbd.I, "SRB", t, self.srbd.nc)  # TODO: should we use w_R_b * I * w_R_b.T?
         viz.publishPointTrj(self.solution["r"], t, "SRB", "world")
 
         self.srbd_msg.header.stamp = t
