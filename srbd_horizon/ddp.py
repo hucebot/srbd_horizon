@@ -369,6 +369,7 @@ class SQPSolver(Solver):
         N = prb.getNNodes()
         if not add_last_node:
             N -= 1
+
         for n in range(0, N):
             print(f"node: {n}")
             for fun in self.fun_container.getCost().values():
@@ -383,6 +384,11 @@ class SQPSolver(Solver):
                         fun_list.append(fun_to_append[:])
                     else:
                         raise Exception('wrong type of function found in fun_container')
+
+        #if not add_last_node:
+        #    x_final = w[-self.state_size:]
+        #    fun_list.append(0.*x_final) #this is to ensure that final part of Hessian and gradients are not considered structural zeros
+
         f = cs.veccat(*fun_list)
 
         # build parameters
