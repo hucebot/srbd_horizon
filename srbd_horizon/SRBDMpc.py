@@ -112,11 +112,21 @@ class SRBDController(MpcController):
 
     def visualize(self):
         t = rospy.Time().now()
-        utilities.SRBDTfBroadcaster(self.solution['r'][:, 0], self.solution['o'][:, 0], self.c0_hist, t)
+
+        nodes_to_visualize = np.arange(0, self.srbd.prb.getNNodes(), 6).tolist()
+        Iw = list()
+        for n in nodes_to_visualize:
+            w_R_b = utils.toRot(self.solution["o"][:, n])
+            Iwn = np.matmul(np.matmul(w_R_b, self.srbd.I / self.srbd.force_scaling), w_R_b.T)
+            Iw.append(Iwn)
+
+        viz.visualize_horizon(nodes_to_visualize, self.solution, self.srbd.nc, t, Inertia=Iw, body_name="SRB", offset=100)
+
+        #utilities.SRBDTfBroadcaster(self.solution['r'][:, 0], self.solution['o'][:, 0], self.c0_hist, t)
         for i in range(0, self.srbd.nc):
-            viz.publishContactForce(t, self.srbd.force_scaling * self.solution['f' + str(i)][:, 0], 'c' + str(i))
+            viz.publishContactForce(t, self.srbd.force_scaling * self.solution['f' + str(i)][:, 0], 'c' + str(i) + str(0))
             viz.publishPointTrj(self.solution["c" + str(i)], t, 'c' + str(i), "world", color=[0., 0., 1.])
-        viz.SRBDViewer(self.Iw0, "SRB", t, self.srbd.nc)
+        #viz.SRBDViewer(self.Iw0, "SRB", t, self.srbd.nc)
         viz.publishPointTrj(self.solution["r"], t, "SRB", "world")
 
         self.srbd_msg.header.stamp = t
