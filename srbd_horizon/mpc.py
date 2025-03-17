@@ -17,7 +17,10 @@ class MpcController:
     def __init__(self, initial_joint_state):
         self.initial_joint_state = initial_joint_state
 
-        rospy.init_node('mpc_controller', anonymous=True)
+        try:
+            rospy.init_node('mpc_controller', anonymous=True)
+        except:
+            print("rospy already initied, skipping...")
 
         self.solution_time_pub = rospy.Publisher("solution_time", Float32, queue_size=10)
 
