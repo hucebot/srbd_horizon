@@ -45,8 +45,7 @@ class LipController(MpcController):
         self.solution_time_vec = list()
 
     def __del__(self):
-        pass
-        #scipy.io.savemat('dlip_solution_time.mat', {'solution_time': np.array(self.solution_time_vec)})
+        scipy.io.savemat('dlip_solution_time.mat', {'solution_time': np.array(self.solution_time_vec)})
 
     def solve(self, state=None):
         if state is not None:
@@ -85,7 +84,8 @@ class LipController(MpcController):
             ccdot[i] = self.solution["cdot" + str(i)][:, 0]
             ccddot[i] = self.solution["cddot" + str(i)][:, 0]
 
-        self.ret["state"] = state
+        self.ret["state"] = self.state
+        self.ret["state0"] = self.state[:,0]
         self.ret["input"] = input
         self.ret["rddot0"] = self.rddot0
         self.ret["fzmp"] = self.fzmp
@@ -93,6 +93,7 @@ class LipController(MpcController):
         self.ret['ccdot'] = ccdot
         self.ret['ccddot'] = ccddot
         self.ret['solution'] = self.solution
+        self.ret["cdot_switch"] = self.lip.cdot_switch
 
     def visualize(self):
         #c0_hist = dict()
