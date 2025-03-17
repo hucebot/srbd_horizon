@@ -13,7 +13,7 @@
     <param name="transcription_method" value="multiple_shooting"/>
     <param name="max_iteration" value="5"/>
 
-    <param name="world_frame_link" value="left_foot_point_contact"/>
+    <!--param name="world_frame_link" value="left_foot_point_contact"/-->
     <param name="base_link_frame" value="pelvis"/>
 
     <rosparam param = "foot_frames">["left_foot_line_contact_upper", "left_foot_line_contact_lower",
