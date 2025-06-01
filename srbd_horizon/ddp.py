@@ -105,6 +105,8 @@ class DDPSolver(Solver):
             self.ddp_opts.cost_reduction_ths = self.opts["cost_reduction_ths"]
         if "mu0" in self.opts:
             self.ddp_opts.mu0 = self.opts["mu0"]
+        if "codegen_enabled" in self.opts:
+            self.ddp_opts.codegen_enabled = self.opts["codegen_enabled"]
 
         # generate problem to be solved
         self.var_container = self.prb.var_container
@@ -165,6 +167,43 @@ class DDPSolver(Solver):
         self.ddp_solver = pyddp.DdpSolver(self.state_size, self.input_size, self.f_list, self.L_list, self.L_term,
                                           self.ddp_opts)
 
+    def set_params(self, params):
+        self.ddp_solver.set_params(params)
+
+    def initial_forward_pass(self):
+        self.ddp_solver.initial_forward_pass()
+
+    def forward_pass(self):
+        return self.ddp_solver.forward_pass()
+
+    def backward_pass(self, V, Vx, Vxx):
+        self.ddp_solver.backward_pass(V, Vx, Vxx)
+
+    def get_final_state(self):
+        return self.ddp_solver.get_final_state()
+
+    def get_cost(self):
+        return self.ddp_solver.get_cost()
+
+    def get_cost_new(self):
+        return self.ddp_solver.get_cost_new()
+
+    def accept_step(self):
+        self.ddp_solver.accept_step()
+
+    def roll_out(self, x0, alpha, is_intermediate=False):
+        self.ddp_solver.roll_out(x0, alpha, is_intermediate)
+
+    def get_final_state_new(self):
+        return self.ddp_solver.get_final_state_new()
+
+    def get_state_control_trajectories(self):
+        x, u = self.ddp_solver.get_state_control_trajectories()
+        self.var_solution = self._createVarSolDict(x, u)
+        self.var_solution['x_opt'] = x
+        self.var_solution['u_opt'] = u
+        return x, u
+
     def solve(self) -> bool:
         # 1. update parameters
         self.update_params()
@@ -192,7 +231,11 @@ class DDPSolver(Solver):
     def getSolutionDict(self):
         return self.var_solution
 
+    #deprecated
     def setInitialState(self, x0):
+        self.ddp_solver.set_initial_state(x0)
+
+    def set_initial_state(self, x0):
         self.ddp_solver.set_initial_state(x0)
 
     def _createVarSolDict(self, x, u):
